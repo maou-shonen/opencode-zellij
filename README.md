@@ -6,6 +6,21 @@ Give OpenCode a way to use visible Zellij panes for work that should not disappe
 
 Use OpenCode's built-in `bash` for normal commands. Use this plugin when the process should stay alive, remain visible, or need later input.
 
+## Installation
+
+Add the npm package name to your OpenCode config:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "opencode-zellij"
+  ]
+}
+```
+
+OpenCode installs npm plugins automatically at startup. Zellij must also be installed and available on your `PATH`.
+
 ## Good fits
 
 - dev servers and watchers
