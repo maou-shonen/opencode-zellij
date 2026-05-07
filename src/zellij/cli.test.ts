@@ -2,25 +2,64 @@ import { describe, expect, it } from 'bun:test'
 import { buildNewPaneActionArgs, zellijActionArgs, zellijCommandArgs } from './cli.js'
 
 describe('Zellij CLI helpers', () => {
-  it('opens panes near the current pane to preserve focus', () => {
-    expect(buildNewPaneActionArgs({ command: 'bash', title: 'demo', cwd: '/tmp' })).toEqual([
-      'action',
-      'new-pane',
-      '--near-current-pane',
-      '--name',
-      'demo',
-      '--cwd',
-      '/tmp',
-      '--',
-      'bash',
-      '-lc',
-      'bash',
-    ])
+  function withZellijEnv<T>(value: string | undefined, run: () => T): T {
+    const previous = process.env.ZELLIJ
+    try {
+      if (value === undefined)
+        delete process.env.ZELLIJ
+      else
+        process.env.ZELLIJ = value
+
+      return run()
+    }
+    finally {
+      if (previous === undefined)
+        delete process.env.ZELLIJ
+      else
+        process.env.ZELLIJ = previous
+    }
+  }
+
+  it('opens panes near the current pane in attached Zellij sessions to preserve focus', () => {
+    withZellijEnv('1', () => {
+      expect(buildNewPaneActionArgs({ command: 'bash', title: 'demo', cwd: '/tmp' })).toEqual([
+        'action',
+        'new-pane',
+        '--near-current-pane',
+        '--name',
+        'demo',
+        '--cwd',
+        '/tmp',
+        '--',
+        'bash',
+        '-lc',
+        'bash',
+      ])
+    })
+  })
+
+  it('does not use near-current-pane for external session control', () => {
+    withZellijEnv(undefined, () => {
+      expect(buildNewPaneActionArgs({ command: 'bash', title: 'demo', cwd: '/tmp' })).toEqual([
+        'action',
+        'new-pane',
+        '--name',
+        'demo',
+        '--cwd',
+        '/tmp',
+        '--',
+        'bash',
+        '-lc',
+        'bash',
+      ])
+    })
   })
 
   it('keeps floating panes near current pane as well', () => {
-    expect(buildNewPaneActionArgs({ command: 'bash', floating: true })).toContain('--near-current-pane')
-    expect(buildNewPaneActionArgs({ command: 'bash', floating: true })).toContain('--floating')
+    withZellijEnv('1', () => {
+      expect(buildNewPaneActionArgs({ command: 'bash', floating: true })).toContain('--near-current-pane')
+      expect(buildNewPaneActionArgs({ command: 'bash', floating: true })).toContain('--floating')
+    })
   })
 
   it('prefixes actions with explicit Zellij session when provided', () => {

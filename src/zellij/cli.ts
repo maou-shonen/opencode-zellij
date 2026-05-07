@@ -35,7 +35,10 @@ export function zellijActionArgs(action: string, args: string[] = []): string[] 
 }
 
 export function buildNewPaneActionArgs(options: NewPaneOptions): string[] {
-  const args = ['action', 'new-pane', '--near-current-pane']
+  const args = ['action', 'new-pane']
+  if (process.env.ZELLIJ)
+    args.push('--near-current-pane')
+
   if (options.title)
     args.push('--name', options.title)
   if (options.cwd)
