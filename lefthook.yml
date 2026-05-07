@@ -1,0 +1,7 @@
+pre-commit:
+  commands:
+    typecheck:
+      run: bun run typecheck
+    lint-fix:
+      run: bun run lint:fix
+      stage_fixed: true

@@ -1,7 +1,11 @@
 [tools]
 bun = "latest"
+lefthook = "latest"
 node = "latest"
 zellij = "latest"
+
+[hooks]
+postinstall = "lefthook install"
 
 [tasks.install]
 description = "Install project dependencies"
