@@ -73,7 +73,7 @@ jobs:
           exit 1
 
       - name: Run integration tests
-        run: env -u ZELLIJ mise run test-integration
+        run: env -u ZELLIJ RUN_ZELLIJ_INTEGRATION=1 mise run test-integration
 
       - name: Stop Zellij session
         if: always()
