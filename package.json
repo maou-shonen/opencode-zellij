@@ -2,7 +2,6 @@
   "name": "opencode-zellij",
   "type": "module",
   "version": "0.0.1",
-  "private": true,
   "description": "OpenCode plugin for Zellij-backed panes and workflow integrations.",
   "exports": {
     ".": {
