@@ -6,6 +6,21 @@
 
 一般 commands 請使用 OpenCode 內建的 `bash`。當 process 應該持續存在、保持可見，或需要後續輸入時，才使用這個 plugin。
 
+## 安裝
+
+把 npm package name 加到 OpenCode config：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "opencode-zellij"
+  ]
+}
+```
+
+OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝，且可在 `PATH` 中使用。
+
 ## 適合情境
 
 - dev servers 與 watchers
