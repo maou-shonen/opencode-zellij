@@ -12,7 +12,7 @@ const schema = tool.schema
 export const zellijPtyWriteTool = tool({
   description: 'Write stdin to a Zellij PTY session. Refuses human-input-only sessions.',
   args: {
-    id: schema.string().describe('zellij-pty session id returned by zellij_pty_spawn or request_sudo.'),
+    id: schema.string().describe('zellij-pty session id returned by zellij_pty_spawn or zellij_pty_request_sudo.'),
     data: schema.string().describe('Text to write. Use \u0003 to send Ctrl-C.'),
     maxLines: schema.number().int().positive().max(5_000).optional().describe('Maximum recent output lines to return. Defaults to 200.'),
     interruptAfterSeconds: schema.number().positive().max(300).optional().describe('Blindly send Ctrl-C after this many seconds if the pane is still running; keeps the pane alive.'),

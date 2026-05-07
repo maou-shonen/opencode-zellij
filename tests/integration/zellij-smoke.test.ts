@@ -67,10 +67,10 @@ integration('real Zellij integration', () => {
     const hooks = await loadPlugin()
 
     expect(Object.keys(hooks.tool).sort()).toEqual([
-      'request_sudo',
       'zellij_pty_kill',
       'zellij_pty_list',
       'zellij_pty_read',
+      'zellij_pty_request_sudo',
       'zellij_pty_spawn',
       'zellij_pty_write',
     ])
@@ -117,11 +117,11 @@ integration('real Zellij integration', () => {
     }
   })
 
-  it('creates request_sudo as human-only and rejects agent writes', async () => {
+  it('creates zellij_pty_request_sudo as human-only and rejects agent writes', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
     const requested = JSON.parse(
-      await getTool(hooks, 'request_sudo').execute(
+      await getTool(hooks, 'zellij_pty_request_sudo').execute(
         {
           summary: 'Harmless integration sudo request smoke.',
           scripts: [{ command: 'echo request-sudo-ok', description: 'Print a harmless marker after user approval.' }],

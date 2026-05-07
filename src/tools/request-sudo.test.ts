@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { buildReviewScript, shellQuote } from './request-sudo.js'
 
-describe('request_sudo helpers', () => {
+describe('zellij_pty_request_sudo helpers', () => {
   it('shell-quotes single quotes safely', () => {
     expect(shellQuote('it\'s ok')).toBe(`'it'"'"'s ok'`)
   })

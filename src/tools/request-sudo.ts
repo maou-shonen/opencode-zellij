@@ -70,7 +70,7 @@ export const requestSudoTool = tool({
     }
 
     const command = buildReviewScript(args.summary, args.scripts)
-    const title = createOpenCodePaneTitle('request_sudo')
+    const title = createOpenCodePaneTitle('zellij_pty_request_sudo')
     const paneId = await zellijCli.newPane({
       command: 'bash',
       args: ['-lc', command],
@@ -95,7 +95,7 @@ export const requestSudoTool = tool({
       openCodeSessionId: context.sessionID,
       paneId,
       title,
-      command: 'request_sudo',
+      command: 'zellij_pty_request_sudo',
       args: [],
       cwd,
       allowAgentInput: false,

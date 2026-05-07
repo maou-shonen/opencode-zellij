@@ -31,7 +31,7 @@ export const ZellijPtyPlugin: Plugin = async (_input, options) => {
       zellij_pty_write: zellijPtyWriteTool,
       zellij_pty_read: zellijPtyReadTool,
       zellij_pty_kill: zellijPtyKillTool,
-      request_sudo: requestSudoTool,
+      zellij_pty_request_sudo: requestSudoTool,
     },
   }
 }

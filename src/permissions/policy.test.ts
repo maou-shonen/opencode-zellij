@@ -8,7 +8,7 @@ describe('permission policy', () => {
 
   it('denies sudo outside human-input-only panes', () => {
     resetPolicy()
-    expect(() => assertCommandAllowed({ command: 'sudo apt update' })).toThrow(/sudo commands must use request_sudo/)
+    expect(() => assertCommandAllowed({ command: 'sudo apt update' })).toThrow(/sudo commands must use zellij_pty_request_sudo/)
   })
 
   it('allows sudo inside human-input-only panes', () => {

@@ -45,11 +45,11 @@ Close the dev server pane.
 | `zellij_pty_write` | Send input to an interactive pane. |
 | `zellij_pty_list` | Show panes known to the plugin. |
 | `zellij_pty_kill` | Close a pane created by the plugin. |
-| `request_sudo` | Ask the user to review and run privileged commands in Zellij. |
+| `zellij_pty_request_sudo` | Ask the user to review and run privileged commands in Zellij. |
 
 ## Human-only work
 
-`request_sudo` opens a review pane, shows what will run, and waits for the user to type `YES`. The agent cannot type into that pane, so passwords and credentials stay in Zellij instead of entering prompts or tool arguments.
+`zellij_pty_request_sudo` opens a review pane, shows what will run, and waits for the user to type `YES`. The agent cannot type into that pane, so passwords and credentials stay in Zellij instead of entering prompts or tool arguments.
 
 ## Notes
 

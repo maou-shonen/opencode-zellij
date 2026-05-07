@@ -45,11 +45,11 @@
 | `zellij_pty_write` | 對互動式 pane 送出 input。 |
 | `zellij_pty_list` | 顯示 plugin 已知的 panes。 |
 | `zellij_pty_kill` | 關閉 plugin 建立的 pane。 |
-| `request_sudo` | 請使用者在 Zellij 中審核並執行 privileged commands。 |
+| `zellij_pty_request_sudo` | 請使用者在 Zellij 中審核並執行 privileged commands。 |
 
 ## Human-only work
 
-`request_sudo` 會開啟 review pane、顯示即將執行的內容，並等待使用者輸入 `YES`。Agent 不能在該 pane 中輸入，因此 passwords 與 credentials 會留在 Zellij，而不是進入 prompts 或 tool arguments。
+`zellij_pty_request_sudo` 會開啟 review pane、顯示即將執行的內容，並等待使用者輸入 `YES`。Agent 不能在該 pane 中輸入，因此 passwords 與 credentials 會留在 Zellij，而不是進入 prompts 或 tool arguments。
 
 ## 注意事項
 

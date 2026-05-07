@@ -68,7 +68,7 @@ export function assertCommandAllowed(input: PolicyCheckInput): void {
   }
 
   if (!input.humanInputOnly && sudoPattern.test(commandLine)) {
-    throw new Error('sudo commands must use request_sudo so credentials stay human-input-only and never pass through agent tool input.')
+    throw new Error('sudo commands must use zellij_pty_request_sudo so credentials stay human-input-only and never pass through agent tool input.')
   }
 
   if (input.humanInputOnly && sudoPattern.test(commandLine) && !allowSudoPane) {

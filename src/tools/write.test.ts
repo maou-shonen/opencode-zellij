@@ -18,7 +18,7 @@ describe('zellij_pty_write', () => {
       openCodeSessionId: 'session_a',
       paneId: 'terminal_1',
       title: 'human',
-      command: 'request_sudo',
+      command: 'zellij_pty_request_sudo',
       cwd: process.cwd(),
       allowAgentInput: false,
       humanInputOnly: true,

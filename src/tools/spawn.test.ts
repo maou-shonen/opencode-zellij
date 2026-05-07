@@ -7,7 +7,7 @@ describe('zellij_pty_spawn', () => {
   })
 
   it('rejects sudo commands before creating a pane', async () => {
-    await expect(zellijPtySpawnTool.execute({ command: 'sudo apt update' }, testContext())).rejects.toThrow(/request_sudo/)
+    await expect(zellijPtySpawnTool.execute({ command: 'sudo apt update' }, testContext())).rejects.toThrow(/zellij_pty_request_sudo/)
   })
 })
 
