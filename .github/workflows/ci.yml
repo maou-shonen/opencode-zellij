@@ -33,3 +33,52 @@ jobs:
 
       - name: Run checks
         run: mise run check
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ZELLIJ_SESSION_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Cache Node dependencies
+        uses: maou-shonen/node-cache-action@v1
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+
+      - name: Install tools
+        run: mise install
+
+      - name: Install dependencies
+        run: mise run install
+
+      - name: Start Zellij session
+        run: |
+          script -qefc "zellij --session \"$ZELLIJ_SESSION_NAME\"" /tmp/zellij.log >/dev/null 2>&1 &
+          echo "$!" > /tmp/zellij-client.pid
+
+          for attempt in {1..10}; do
+            if zellij list-sessions 2>/dev/null | grep -Fq "$ZELLIJ_SESSION_NAME"; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/zellij.log
+          exit 1
+
+      - name: Run integration tests
+        run: env -u ZELLIJ RUN_ZELLIJ_INTEGRATION=1 mise run test-integration
+
+      - name: Stop Zellij session
+        if: always()
+        run: |
+          zellij kill-session "$ZELLIJ_SESSION_NAME" || true
+          if [ -f /tmp/zellij-client.pid ]; then
+            kill "$(cat /tmp/zellij-client.pid)" || true
+          fi
