@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 import process from 'node:process'
 import { sanitizeTitle, TabTitleManager, type TabTitleCli } from './tab-title.js'
 
-function withZellijEnv<T>(value: string | undefined, run: () => T): T {
+async function withZellijEnv<T>(value: string | undefined, run: () => T | Promise<T>): Promise<T> {
   const previous = process.env.ZELLIJ
   try {
     if (value === undefined)
@@ -10,7 +10,7 @@ function withZellijEnv<T>(value: string | undefined, run: () => T): T {
     else
       process.env.ZELLIJ = value
 
-    return run()
+    return await Promise.resolve(run())
   }
   finally {
     if (previous === undefined)
@@ -61,31 +61,31 @@ describe('TabTitleManager', () => {
     }
   })
 
-  it('shows idle title when no sessions are known', () => {
-    withZellijEnv('1', () => {
+  it('shows idle title when no sessions are known', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       expect(manager.getCurrentTitle()).toBe('🟢 my-project')
     })
   })
 
-  it('shows running title when a session is busy', () => {
-    withZellijEnv('1', () => {
+  it('shows running title when a session is busy', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'busy' })
       expect(manager.getCurrentTitle()).toBe('⚡ my-project')
     })
   })
 
-  it('shows running title when a session is retry', () => {
-    withZellijEnv('1', () => {
+  it('shows running title when a session is retry', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'retry', attempt: 1, message: 'oops', next: 0 })
       expect(manager.getCurrentTitle()).toBe('⚡ my-project')
     })
   })
 
-  it('shows idle title after session becomes idle', () => {
-    withZellijEnv('1', () => {
+  it('shows idle title after session becomes idle', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'busy' })
       manager.markSessionIdle('s1')
@@ -93,8 +93,8 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('aggregates multiple sessions: busy wins', () => {
-    withZellijEnv('1', () => {
+  it('aggregates multiple sessions: busy wins', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'idle' })
       manager.updateSessionStatus('s2', { type: 'busy' })
@@ -102,16 +102,16 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('shows needs-input title when a question or permission is pending', () => {
-    withZellijEnv('1', () => {
+  it('shows needs-input title when a question or permission is pending', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.markNeedsInput('question_1', 's1')
       expect(manager.getCurrentTitle()).toBe('💬 my-project')
     })
   })
 
-  it('prioritizes needs-input over running status', () => {
-    withZellijEnv('1', () => {
+  it('prioritizes needs-input over running status', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'busy' })
       manager.markNeedsInput('question_1', 's1')
@@ -119,8 +119,8 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('returns to running or idle after pending input is cleared', () => {
-    withZellijEnv('1', () => {
+  it('returns to running or idle after pending input is cleared', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'busy' })
       manager.markNeedsInput('question_1', 's1')
@@ -131,8 +131,8 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('clears pending input when its session is deleted', () => {
-    withZellijEnv('1', () => {
+  it('clears pending input when its session is deleted', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.markNeedsInput('question_1', 's1')
       manager.removeSession('s1')
@@ -140,8 +140,8 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('removes session on deleted', () => {
-    withZellijEnv('1', () => {
+  it('removes session on deleted', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'busy' })
       manager.removeSession('s1')
@@ -149,23 +149,23 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('includes branch segment when branch is set', () => {
-    withZellijEnv('1', () => {
+  it('includes branch segment when branch is set', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.setBranch('main')
       expect(manager.getCurrentTitle()).toBe('🟢 my-project 🌱 main')
     })
   })
 
-  it('includes initial branch segment when provided', () => {
-    withZellijEnv('1', () => {
+  it('includes initial branch segment when provided', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', branchName: 'main', cli: mockCli })
       expect(manager.getCurrentTitle()).toBe('🟢 my-project 🌱 main')
     })
   })
 
-  it('omits branch segment when branch is missing or empty', () => {
-    withZellijEnv('1', () => {
+  it('omits branch segment when branch is missing or empty', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.setBranch('')
       expect(manager.getCurrentTitle()).toBe('🟢 my-project')
@@ -195,6 +195,26 @@ describe('TabTitleManager', () => {
     })
   })
 
+  it('retries a failed title sync on the next render', async () => {
+    await withZellijEnv('1', async () => {
+      let shouldFail = true
+      const retryingCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+          if (shouldFail) {
+            shouldFail = false
+            throw new Error('temporary zellij failure')
+          }
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: retryingCli })
+
+      await expect(manager.renderImmediate()).resolves.toBeUndefined()
+      await expect(manager.renderImmediate()).resolves.toBeUndefined()
+      expect(calls).toEqual(['🟢 my-project', '🟢 my-project'])
+    })
+  })
+
   it('is a no-op when ZELLIJ is absent', async () => {
     await withZellijEnv(undefined, async () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
@@ -203,8 +223,8 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('uses custom emojis', () => {
-    withZellijEnv('1', () => {
+  it('uses custom emojis', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({
         projectName: 'my-project',
         branchName: 'main',
@@ -270,8 +290,8 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('updates retry status even when type matches existing retry', () => {
-    withZellijEnv('1', () => {
+  it('updates retry status even when type matches existing retry', async () => {
+    await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'retry', attempt: 1, message: 'a', next: 0 })
       manager.updateSessionStatus('s1', { type: 'retry', attempt: 2, message: 'b', next: 0 })

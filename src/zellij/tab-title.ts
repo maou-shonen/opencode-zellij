@@ -65,7 +65,7 @@ export class TabTitleManager {
   private readonly pendingInputs = new Map<string, string>()
   private branchName: string | undefined
   private desiredTitle: string | undefined
-  private lastAttemptedTitle: string | undefined
+  private lastSyncedTitle: string | undefined
   private debounceTimer: ReturnType<typeof setTimeout> | undefined
   private syncInFlight = false
   private readonly debounceMs: number
@@ -178,7 +178,7 @@ export class TabTitleManager {
     if (!this.enabled)
       return
     const title = this.buildTitle()
-    if (title === this.desiredTitle && title === this.lastAttemptedTitle)
+    if (title === this.desiredTitle && title === this.lastSyncedTitle)
       return
     this.desiredTitle = title
 
@@ -200,14 +200,15 @@ export class TabTitleManager {
 
     this.syncInFlight = true
     try {
-      while (this.desiredTitle && this.desiredTitle !== this.lastAttemptedTitle) {
+      while (this.desiredTitle && this.desiredTitle !== this.lastSyncedTitle) {
         const title = this.desiredTitle
-        this.lastAttemptedTitle = title
         try {
           await this.cli.renameTab(title)
+          this.lastSyncedTitle = title
         }
         catch (cause) {
           debug('Failed to rename Zellij tab.', cause)
+          break
         }
       }
     }
