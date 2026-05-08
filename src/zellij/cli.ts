@@ -50,6 +50,10 @@ export function buildNewPaneActionArgs(options: NewPaneOptions): string[] {
   return args
 }
 
+export function buildRenameTabActionArgs(title: string): string[] {
+  return ['action', 'rename-tab', title]
+}
+
 export function ensureZellijTarget(): void {
   if (process.env.ZELLIJ || process.env.ZELLIJ_SESSION_NAME)
     return
@@ -104,6 +108,10 @@ export class ZellijCli {
   async dumpScreen(paneId: string): Promise<string> {
     const result = await runZellij(zellijActionArgs('dump-screen', ['--pane-id', paneId, '--full']), { timeoutMs: 10_000 })
     return result.stdout
+  }
+
+  async renameTab(title: string): Promise<void> {
+    await runZellij(buildRenameTabActionArgs(title))
   }
 }
 

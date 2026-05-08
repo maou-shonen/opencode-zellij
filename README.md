@@ -66,9 +66,22 @@ Close the dev server pane.
 
 `zellij_pty_request_sudo` opens a review pane, shows what will run, and waits for the user to type `YES`. The agent cannot type into that pane, so passwords and credentials stay in Zellij instead of entering prompts or tool arguments.
 
+## Dynamic tab title
+
+When OpenCode runs inside Zellij, the plugin updates the current tab title to show the project, branch, and current OpenCode state:
+
+```text
+🟢 opencode-zellij 🌱 main        # ready
+⚡ opencode-zellij 🌱 main        # agent running
+💬 opencode-zellij 🌱 main        # waiting for user input
+```
+
+The title is updated best-effort from OpenCode session, question, permission, and branch events.
+
 ## Notes
 
 - This is not a sandbox.
 - Session records are in-memory only; restarting OpenCode loses them.
 - Output is rendered Zellij output, not raw PTY bytes.
 - Exit code capture is best-effort for commands started by the plugin.
+- When dynamic tab title is enabled, it may overwrite manual Zellij tab renames on the next OpenCode state change.

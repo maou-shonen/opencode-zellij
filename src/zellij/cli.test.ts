@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildNewPaneActionArgs, zellijActionArgs, zellijCommandArgs } from './cli.js'
+import { buildNewPaneActionArgs, buildRenameTabActionArgs, zellijActionArgs, zellijCommandArgs } from './cli.js'
 
 describe('Zellij CLI helpers', () => {
   function withZellijEnv<T>(value: string | undefined, run: () => T): T {
@@ -73,5 +73,10 @@ describe('Zellij CLI helpers', () => {
         delete process.env.ZELLIJ_SESSION_NAME
       else process.env.ZELLIJ_SESSION_NAME = previous
     }
+  })
+
+  it('builds rename-tab args with emoji and no extra quotes', () => {
+    const title = '🟢 my-project 🌱 main'
+    expect(buildRenameTabActionArgs(title)).toEqual(['action', 'rename-tab', title])
   })
 })
