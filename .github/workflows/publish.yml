@@ -41,32 +41,6 @@ jobs:
       - name: Set package version from git tag
         run: npm version from-git --no-git-tag-version --allow-same-version
 
-      - name: Set package repository metadata
-        run: |
-          node --input-type=module <<'EOF'
-          import { readFileSync, writeFileSync } from 'node:fs'
-
-          const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
-          pkg.repository = {
-            type: 'git',
-            url: `https://github.com/${process.env.GITHUB_REPOSITORY}`,
-          }
-
-          const orderedPkg = {}
-          for (const key of ['name', 'type', 'version', 'description', 'repository']) {
-            if (key in pkg) {
-              orderedPkg[key] = pkg[key]
-            }
-          }
-          for (const [key, value] of Object.entries(pkg)) {
-            if (!(key in orderedPkg)) {
-              orderedPkg[key] = value
-            }
-          }
-
-          writeFileSync('package.json', `${JSON.stringify(orderedPkg, null, 2)}\n`)
-          EOF
-
       - name: Install dependencies
         run: mise run install
 
