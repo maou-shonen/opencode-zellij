@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
 export interface WatchdogPane {
   sessionId: string
@@ -90,12 +91,16 @@ function ensureWatchdog(): void {
     return
   watchdogStarted = true
 
-  const child = spawn('node', ['-e', watchdogScript(), watchdogRegistryPath()], {
+  const child = spawn('node', [watchdogRunnerPath(), watchdogRegistryPath()], {
     detached: true,
     stdio: 'ignore',
     env: process.env,
   })
   child.unref()
+}
+
+function watchdogRunnerPath(): string {
+  return fileURLToPath(new URL('./pane-watchdog-runner.mjs', import.meta.url))
 }
 
 export function cleanupStaleWatchdogRegistries(): void {
@@ -189,60 +194,4 @@ export function removeWatchdogRegistry(): void {
   catch {
     // Watchdog registry cleanup is best effort.
   }
-}
-
-function watchdogScript(): string {
-  return String.raw`
-const { existsSync, readFileSync, rmSync } = require('node:fs')
-const { spawnSync } = require('node:child_process')
-const registryPath = process.argv[1]
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-function linuxProcessStartTime(pid) {
-  try {
-    const stat = readFileSync('/proc/' + pid + '/stat', 'utf8')
-    const fieldsAfterCommand = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)
-    return fieldsAfterCommand[19] || null
-  }
-  catch {
-    return null
-  }
-}
-function readRegistry() {
-  try {
-    if (!existsSync(registryPath)) return null
-    return JSON.parse(readFileSync(registryPath, 'utf8'))
-  }
-  catch {
-    return null
-  }
-}
-function ownerAlive(registry) {
-  try {
-    process.kill(registry.ownerPid, 0)
-  }
-  catch {
-    return false
-  }
-  return !registry.ownerStartTime || linuxProcessStartTime(registry.ownerPid) === registry.ownerStartTime
-}
-function closePane(registry, paneId) {
-  const args = []
-  if (registry.zellijSessionName) args.push('--session', registry.zellijSessionName)
-  args.push('action', 'close-pane', '--pane-id', paneId)
-  spawnSync('zellij', args, { stdio: 'ignore', timeout: 2000 })
-}
-(async () => {
-  for (;;) {
-    const registry = readRegistry()
-    if (!registry) return
-    if (!ownerAlive(registry)) {
-      const finalRegistry = readRegistry() || registry
-      for (const pane of finalRegistry.panes || []) closePane(finalRegistry, pane.paneId)
-      rmSync(registryPath, { force: true })
-      return
-    }
-    await sleep(1000)
-  }
-})()
-`
 }
