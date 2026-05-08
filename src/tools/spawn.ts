@@ -6,6 +6,7 @@ import { runProbe } from '../pty/probe.js'
 import { createExitCodeToken } from '../utils/exit-code.js'
 import { createOpenCodePaneTitle } from '../utils/pane-title.js'
 import { zellijCli } from '../zellij/cli.js'
+import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, nextAdvice, publicSession } from './format.js'
 import { outputMatches, readOutputSnapshot, validateGrep } from './output.js'
@@ -70,6 +71,7 @@ export const zellijPtySpawnTool = tool({
       humanInputOnly: false,
       exitCodeToken,
     })
+    registerPaneForWatchdog(session)
     await subscriberManager.start(session)
     const probe = await runProbe(args.probe as Probe | undefined, (grep, ignoreCase) => outputMatches(session.id, grep, ignoreCase))
     const output = readOutputSnapshot(session.id, { maxLines: args.maxLines })

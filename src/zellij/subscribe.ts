@@ -8,6 +8,7 @@ import { sessionManager } from '../pty/manager.js'
 import { RingBuffer } from '../pty/ring-buffer.js'
 import { parseExitCodeMarker } from '../utils/exit-code.js'
 import { ensureZellijTarget, zellijCli, zellijCommandArgs } from './cli.js'
+import { unregisterPaneFromWatchdog } from './pane-watchdog.js'
 
 interface SubscriberState {
   child: ChildProcessWithoutNullStreams | null
@@ -230,6 +231,7 @@ export class SubscriberManager {
       state.buffer.append(`[zellij-pty] Pane ${session.paneId} closed at ${new Date().toISOString()}`)
       this.sessions.updateLineCount(sessionId, state.buffer.lineCount)
       this.sessions.updateStatus(sessionId, session.status === 'killed' ? 'killed' : 'exited')
+      unregisterPaneFromWatchdog(sessionId)
       this.stop(sessionId)
       return
     }

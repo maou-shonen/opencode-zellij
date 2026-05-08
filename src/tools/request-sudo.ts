@@ -4,6 +4,7 @@ import { sessionManager } from '../pty/manager.js'
 import { createExitCodeToken } from '../utils/exit-code.js'
 import { createOpenCodePaneTitle } from '../utils/pane-title.js'
 import { zellijCli } from '../zellij/cli.js'
+import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, nextAdvice, publicSession } from './format.js'
 import { readOutputSnapshot } from './output.js'
@@ -102,6 +103,7 @@ export const requestSudoTool = tool({
       humanInputOnly: true,
       exitCodeToken,
     })
+    registerPaneForWatchdog(session)
     await subscriberManager.start(session)
 
     return jsonResponse({

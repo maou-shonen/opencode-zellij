@@ -78,6 +78,12 @@ OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝，�
 
 Title 會 best-effort 根據 OpenCode session、question、permission 與 branch events 更新。
 
+## Pane cleanup watchdog
+
+當 plugin 建立 pane 時，也會為該 OpenCode plugin instance 啟動一個小型 detached Node.js watchdog process。watchdog 會把 per-instance registry 放在 `$XDG_RUNTIME_DIR/opencode-zellij-*`（或系統 temp directory），監控擁有該 registry 的 OpenCode process，並在 OpenCode 還沒來得及執行正常 plugin cleanup 就退出時關閉 plugin 建立的 panes，例如使用 Ctrl-D 離開。
+
+owner process 結束且 cleanup 完成後，watchdog 會自動退出。Registry 會依 OpenCode process 與 plugin instance 隔離。
+
 ## 注意事項
 
 - 這不是 sandbox。

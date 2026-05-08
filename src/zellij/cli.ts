@@ -1,5 +1,5 @@
 import type { CommandInput } from '../utils/shell-args.js'
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import process from 'node:process'
 import { promisify } from 'node:util'
 import { parsePaneId } from '../utils/ids.js'
@@ -99,6 +99,15 @@ export class ZellijCli {
 
   async closePane(paneId: string): Promise<void> {
     await runZellij(zellijActionArgs('close-pane', ['--pane-id', paneId]))
+  }
+
+  closePaneSync(paneId: string): void {
+    ensureZellijTarget()
+    spawnSync('zellij', zellijCommandArgs(zellijActionArgs('close-pane', ['--pane-id', paneId])), {
+      encoding: 'utf8',
+      stdio: 'ignore',
+      timeout: 2_000,
+    })
   }
 
   async focusPane(paneId: string): Promise<void> {
