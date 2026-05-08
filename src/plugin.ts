@@ -9,6 +9,8 @@ import { zellijPtyReadTool } from './tools/read.js'
 import { requestSudoTool } from './tools/request-sudo.js'
 import { zellijPtySpawnTool } from './tools/spawn.js'
 import { zellijPtyWriteTool } from './tools/write.js'
+import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './zellij/pane-watchdog.js'
+import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
 import { deletedSessionID, getInitialBranch, handleTabTitleEvent, shouldReadInitialBranch } from './zellij/tab-title-events.js'
 import { TabTitleManager } from './zellij/tab-title.js'
@@ -23,6 +25,8 @@ function getWorkspaceRoot(input: { directory?: string | undefined, worktree?: st
 
 export const ZellijPtyPlugin: Plugin = async (input, options) => {
   configurePolicy(options?.zellijPty ?? options)
+  cleanupStaleWatchdogRegistries()
+  registerShutdownCleanup()
 
   const workspaceRoot = getWorkspaceRoot(input)
   const projectName = getProjectName(workspaceRoot)
@@ -47,6 +51,7 @@ export const ZellijPtyPlugin: Plugin = async (input, options) => {
           sessions.map(async (session) => {
             await subscriberManager.closeSessionPane(session.id)
             subscriberManager.forget(session.id)
+            unregisterPaneFromWatchdog(session.id)
             sessionManager.remove(session.id)
           }),
         )

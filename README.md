@@ -78,6 +78,12 @@ When OpenCode runs inside Zellij, the plugin updates the current tab title to sh
 
 The title is updated best-effort from OpenCode session, question, permission, and branch events.
 
+## Pane cleanup watchdog
+
+When the plugin creates a pane, it also starts a small detached Node.js watchdog process for that OpenCode plugin instance. The watchdog keeps a per-instance registry under `$XDG_RUNTIME_DIR/opencode-zellij-*` (or the system temp directory), watches the owning OpenCode process, and closes plugin-created panes if OpenCode exits before normal plugin cleanup can run, such as when leaving with Ctrl-D.
+
+The watchdog exits automatically after the owner process exits and cleanup is complete. Registries are isolated per OpenCode process and plugin instance.
+
 ## Notes
 
 - This is not a sandbox.

@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { tool } from '@opencode-ai/plugin'
 import { sessionManager } from '../pty/manager.js'
 import { zellijCli } from '../zellij/cli.js'
+import { unregisterPaneFromWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, nextAdvice, publicSession } from './format.js'
 import { readOutputSnapshot } from './output.js'
@@ -49,6 +50,7 @@ export const zellijPtyKillTool = tool({
     }
     subscriberManager.stop(session.id)
     subscriberManager.forget(session.id)
+    unregisterPaneFromWatchdog(session.id)
     sessionManager.remove(session.id)
     return jsonResponse({ killed: true, cleanedUp: true, id: session.id, paneId: session.paneId, output, next: nextAdvice(false, 'Session was closed and removed from the in-memory registry.'), warnings })
   },
