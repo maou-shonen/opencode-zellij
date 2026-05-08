@@ -17,11 +17,16 @@ function getProjectName(path: string): string {
   return path.split(/[/\\]/).filter(Boolean).pop() || 'opencode'
 }
 
+function getWorkspaceRoot(input: { directory?: string | undefined, worktree?: string | undefined }): string {
+  return input.worktree || input.directory || process.cwd()
+}
+
 export const ZellijPtyPlugin: Plugin = async (input, options) => {
   configurePolicy(options?.zellijPty ?? options)
 
-  const projectName = getProjectName(input.worktree || input.directory)
-  const branchName = shouldReadInitialBranch(process.env.ZELLIJ) ? await getInitialBranch(input.worktree || input.directory) : undefined
+  const workspaceRoot = getWorkspaceRoot(input)
+  const projectName = getProjectName(workspaceRoot)
+  const branchName = shouldReadInitialBranch(process.env.ZELLIJ) ? await getInitialBranch(workspaceRoot) : undefined
   const tabTitleManager = new TabTitleManager({ projectName, branchName })
 
   // Best-effort initial render; no-op when not inside a real Zellij pane.
