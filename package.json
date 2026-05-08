@@ -3,6 +3,10 @@
   "type": "module",
   "version": "0.0.1",
   "description": "OpenCode plugin for Zellij-backed panes and workflow integrations.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maou-shonen/opencode-zellij"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",

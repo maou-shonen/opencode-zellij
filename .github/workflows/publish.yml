@@ -41,6 +41,9 @@ jobs:
       - name: Set package version from git tag
         run: npm version from-git --no-git-tag-version --allow-same-version
 
+      - name: Set package repository metadata
+        run: npm pkg set repository.type=git repository.url=https://github.com/${{ github.repository }}
+
       - name: Install dependencies
         run: mise run install
 
