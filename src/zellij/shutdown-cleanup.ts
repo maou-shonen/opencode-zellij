@@ -21,7 +21,7 @@ export function cleanupPanesOnShutdown(
       zellijCli.closePaneSync(session.paneId)
     }
     catch {
-      // Process shutdown cleanup is best effort.
+      // Shutdown cleanup is only a fast best-effort path; the watchdog registry remains as fallback.
     }
 
     subscribers.forget(session.id)

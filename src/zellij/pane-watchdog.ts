@@ -46,6 +46,7 @@ function linuxProcessStartTime(pid: number): string | null {
     return parseLinuxProcessStartTime(readFileSync(`/proc/${pid}/stat`, 'utf8'))
   }
   catch {
+    // Missing /proc data is expected when the owner has exited or on non-Linux systems.
     return null
   }
 }
@@ -73,6 +74,7 @@ function readRegistry(): WatchdogRegistry {
     return parsed
   }
   catch {
+    // The current instance registry is corrupt or unreadable; start from an empty registry.
     return emptyRegistry()
   }
 }
@@ -121,6 +123,7 @@ export function cleanupStaleWatchdogRegistries(): void {
       rmSync(file, { force: true })
     }
     catch {
+      // Corrupt stale registries cannot be used safely and would otherwise fail every startup.
       rmSync(file, { force: true })
     }
   }
@@ -131,6 +134,7 @@ function ownerStillMatches(registry: WatchdogRegistry): boolean {
     process.kill(registry.ownerPid, 0)
   }
   catch {
+    // process.kill(pid, 0) throws when the owner is gone or inaccessible.
     return false
   }
 

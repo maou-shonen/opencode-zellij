@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import process from 'node:process'
 
 interface WatchdogPane {
@@ -30,6 +30,7 @@ function linuxProcessStartTime(pid: number): string | null {
     return fieldsAfterCommand[19] || null
   }
   catch {
+    // Missing /proc data is expected when the owner has exited or on non-Linux systems.
     return null
   }
 }
@@ -41,6 +42,7 @@ function readRegistry(): WatchdogRegistry | null {
     return JSON.parse(readFileSync(registryPath!, 'utf8')) as WatchdogRegistry
   }
   catch {
+    // A missing or corrupt registry cannot be used safely; let the watchdog exit.
     return null
   }
 }
@@ -50,6 +52,7 @@ function ownerAlive(registry: WatchdogRegistry): boolean {
     process.kill(registry.ownerPid, 0)
   }
   catch {
+    // process.kill(pid, 0) throws when the owner is gone or inaccessible.
     return false
   }
 
@@ -83,6 +86,16 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(() => {
+function writeFatalError(error: unknown): void {
+  try {
+    appendFileSync(`${registryPath}.log`, `${new Date().toISOString()} ${error instanceof Error ? error.stack || error.message : String(error)}\n`)
+  }
+  catch {
+    // The watchdog has no stderr; if file logging also fails, exiting is the only safe fallback.
+  }
+}
+
+main().catch((error: unknown) => {
+  writeFatalError(error)
   process.exit(1)
 })
