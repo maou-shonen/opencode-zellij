@@ -22,6 +22,7 @@
     "lint:fix": "eslint . --fix",
     "test": "bun test src",
     "test:integration": "bun run build && RUN_ZELLIJ_INTEGRATION=1 bun test tests/integration",
+    "publish:preview": "pkg-pr-new publish --bun",
     "prepack": "bun run build"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
     "@types/bun": "latest",
     "@types/node": "latest",
     "eslint": "^10.3.0",
+    "pkg-pr-new": "^0.0.71",
     "tsdown": "latest",
     "typescript": "latest"
   }
