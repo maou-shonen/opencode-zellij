@@ -4,6 +4,8 @@ export default antfu({
   ignores: [
     'dist',
     'node_modules',
+    '**/*.test.ts',
   ],
+  markdown: false,
   typescript: true,
 })
