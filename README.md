@@ -1,5 +1,8 @@
 # opencode-zellij
 
+[![npm version](https://img.shields.io/npm/v/opencode-zellij.svg)](https://www.npmjs.com/package/opencode-zellij)
+[![CI](https://github.com/maou-shonen/opencode-zellij/actions/workflows/ci.yml/badge.svg)](https://github.com/maou-shonen/opencode-zellij/actions/workflows/ci.yml)
+
 [正體中文](README.zh.md)
 
 Give OpenCode a way to use visible Zellij panes for work that should not disappear into a one-shot tool call.

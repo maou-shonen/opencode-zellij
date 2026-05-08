@@ -1,5 +1,8 @@
 # opencode-zellij
 
+[![npm version](https://img.shields.io/npm/v/opencode-zellij.svg)](https://www.npmjs.com/package/opencode-zellij)
+[![CI](https://github.com/maou-shonen/opencode-zellij/actions/workflows/ci.yml/badge.svg)](https://github.com/maou-shonen/opencode-zellij/actions/workflows/ci.yml)
+
 [English](README.md)
 
 讓 OpenCode 可以使用可見的 Zellij panes，處理不適合消失在一次性 tool call 裡的工作。
