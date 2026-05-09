@@ -54,9 +54,10 @@ describe('TabTitleManager', () => {
 
   beforeEach(() => {
     calls = []
+    const currentCalls = calls
     mockCli = {
       async renameTab(title: string) {
-        calls.push(title)
+        currentCalls.push(title)
       },
     }
   })
@@ -190,12 +191,13 @@ describe('TabTitleManager', () => {
           throw new Error('zellij not found')
         },
       }
-      const manager = new TabTitleManager({ projectName: 'my-project', cli: failingCli })
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: failingCli, retryInitialMs: 1 })
       await expect(manager.renderImmediate()).resolves.toBeUndefined()
+      manager.destroy()
     })
   })
 
-  it('retries a failed title sync on the next render', async () => {
+  it('automatically retries a failed title sync without another render', async () => {
     await withZellijEnv('1', async () => {
       let shouldFail = true
       const retryingCli = {
@@ -207,11 +209,52 @@ describe('TabTitleManager', () => {
           }
         },
       }
-      const manager = new TabTitleManager({ projectName: 'my-project', cli: retryingCli })
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: retryingCli, retryInitialMs: 5 })
 
       await expect(manager.renderImmediate()).resolves.toBeUndefined()
-      await expect(manager.renderImmediate()).resolves.toBeUndefined()
+      await new Promise(r => setTimeout(r, 30))
       expect(calls).toEqual(['🟢 my-project', '🟢 my-project'])
+      manager.destroy()
+    })
+  })
+
+  it('retries the latest desired title after a failed sync', async () => {
+    await withZellijEnv('1', async () => {
+      let shouldFail = true
+      const retryingCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+          if (shouldFail) {
+            shouldFail = false
+            throw new Error('temporary zellij failure')
+          }
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: retryingCli, debounceMs: 1, retryInitialMs: 50 })
+
+      await manager.renderImmediate()
+      manager.setBranch('main')
+      manager.updateSessionStatus('s1', { type: 'busy' })
+      await new Promise(r => setTimeout(r, 30))
+      expect(calls).toEqual(['🟢 my-project', '⚡ my-project 🌱 main'])
+      manager.destroy()
+    })
+  })
+
+  it('clears pending retry timers when destroyed', async () => {
+    await withZellijEnv('1', async () => {
+      const failingCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+          throw new Error('temporary zellij failure')
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: failingCli, retryInitialMs: 5 })
+
+      await manager.renderImmediate()
+      manager.destroy()
+      await new Promise(r => setTimeout(r, 30))
+      expect(calls).toEqual(['🟢 my-project'])
     })
   })
 
@@ -287,6 +330,36 @@ describe('TabTitleManager', () => {
       resolveFirstRename?.()
       await firstSync
       expect(calls).toEqual(['🟢 my-project', '⚡ my-project 🌱 main'])
+    })
+  })
+
+  it('retries the latest desired title after an in-flight rename fails', async () => {
+    await withZellijEnv('1', async () => {
+      let rejectFirstRename: ((cause: Error) => void) | undefined
+      const blockingCli: TabTitleCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+          if (calls.length === 1) {
+            await new Promise<void>((_, reject) => {
+              rejectFirstRename = reject
+            })
+          }
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: blockingCli, debounceMs: 1, retryInitialMs: 5 })
+
+      const firstSync = manager.renderImmediate()
+      manager.setBranch('main')
+      manager.updateSessionStatus('s1', { type: 'busy' })
+      await new Promise(r => setTimeout(r, 10))
+      expect(calls).toEqual(['🟢 my-project'])
+
+      rejectFirstRename?.(new Error('temporary zellij failure'))
+      await firstSync
+      await new Promise(r => setTimeout(r, 30))
+
+      expect(calls).toEqual(['🟢 my-project', '⚡ my-project 🌱 main'])
+      manager.destroy()
     })
   })
 

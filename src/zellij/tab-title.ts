@@ -58,6 +58,8 @@ export interface TabTitleManagerOptions {
   cli?: TabTitleCli
   emojis?: Partial<TabTitleEmojis> | undefined
   debounceMs?: number
+  retryInitialMs?: number
+  retryMaxMs?: number
 }
 
 export class TabTitleManager {
@@ -67,12 +69,17 @@ export class TabTitleManager {
   private desiredTitle: string | undefined
   private lastSyncedTitle: string | undefined
   private debounceTimer: ReturnType<typeof setTimeout> | undefined
+  private retryTimer: ReturnType<typeof setTimeout> | undefined
+  private retryAttempt = 0
   private syncInFlight = false
   private readonly debounceMs: number
+  private readonly retryInitialMs: number
+  private readonly retryMaxMs: number
   private readonly projectName: string
   private readonly cli: TabTitleCli
   private readonly emojis: TabTitleEmojis
   private readonly enabled: boolean
+  private destroyed = false
 
   constructor(options: TabTitleManagerOptions) {
     this.projectName = options.projectName
@@ -80,6 +87,8 @@ export class TabTitleManager {
     this.cli = options.cli ?? new ZellijCli()
     this.emojis = { ...defaultTabTitleEmojis, ...options.emojis }
     this.debounceMs = options.debounceMs ?? 300
+    this.retryInitialMs = options.retryInitialMs ?? 250
+    this.retryMaxMs = options.retryMaxMs ?? 5_000
     this.enabled = Boolean(process.env.ZELLIJ)
   }
 
@@ -167,7 +176,7 @@ export class TabTitleManager {
   }
 
   async renderImmediate(): Promise<void> {
-    if (!this.enabled)
+    if (!this.enabled || this.destroyed)
       return
     this.desiredTitle = this.buildTitle()
     this.clearDebounceTimer()
@@ -175,7 +184,7 @@ export class TabTitleManager {
   }
 
   scheduleUpdate(): void {
-    if (!this.enabled)
+    if (!this.enabled || this.destroyed)
       return
     const title = this.buildTitle()
     if (title === this.desiredTitle && title === this.lastSyncedTitle)
@@ -185,15 +194,17 @@ export class TabTitleManager {
     if (this.syncInFlight)
       return
 
+    this.clearRetryTimer()
     this.clearDebounceTimer()
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = undefined
       this.syncDesiredTitle().catch(() => {})
     }, this.debounceMs)
+    this.unrefTimer(this.debounceTimer)
   }
 
   private async syncDesiredTitle(): Promise<void> {
-    if (!this.enabled)
+    if (!this.enabled || this.destroyed)
       return
     if (this.syncInFlight)
       return
@@ -205,9 +216,12 @@ export class TabTitleManager {
         try {
           await this.cli.renameTab(title)
           this.lastSyncedTitle = title
+          this.retryAttempt = 0
+          this.clearRetryTimer()
         }
         catch (cause) {
           debug('Failed to rename Zellij tab.', cause)
+          this.scheduleRetry()
           break
         }
       }
@@ -217,6 +231,30 @@ export class TabTitleManager {
     }
   }
 
+  private scheduleRetry(): void {
+    if (!this.enabled || this.destroyed || this.retryTimer || this.desiredTitle === this.lastSyncedTitle)
+      return
+
+    const delay = Math.min(this.retryMaxMs, this.retryInitialMs * 2 ** this.retryAttempt)
+    this.retryAttempt += 1
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined
+      this.syncDesiredTitle().catch(() => {})
+    }, delay)
+    this.unrefTimer(this.retryTimer)
+  }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer)
+      clearTimeout(this.retryTimer)
+    this.retryTimer = undefined
+  }
+
+  private unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+    if (typeof timer === 'object' && timer && 'unref' in timer && typeof timer.unref === 'function')
+      timer.unref()
+  }
+
   private clearDebounceTimer(): void {
     if (this.debounceTimer)
       clearTimeout(this.debounceTimer)
@@ -224,6 +262,8 @@ export class TabTitleManager {
   }
 
   destroy(): void {
+    this.destroyed = true
     this.clearDebounceTimer()
+    this.clearRetryTimer()
   }
 }

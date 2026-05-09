@@ -28,6 +28,10 @@ class RecordingTabTitleManager implements TabTitleEventManager {
   setBranch(branch: string | undefined): void {
     this.calls.push(`branch:${branch ?? ''}`)
   }
+
+  destroy(): void {
+    this.calls.push('destroy')
+  }
 }
 
 function route(event: OpenCodeEventLike): string[] {
@@ -37,16 +41,18 @@ function route(event: OpenCodeEventLike): string[] {
 }
 
 describe('tab title event routing', () => {
-  it('routes session status, idle, deleted, and branch events', () => {
+  it('routes session status, idle, error, deleted, and branch events', () => {
     const manager = new RecordingTabTitleManager()
 
     handleTabTitleEvent(manager, { type: 'session.status', properties: { sessionID: 's1', status: { type: 'busy' } } })
     handleTabTitleEvent(manager, { type: 'session.idle', properties: { sessionID: 's1' } })
+    handleTabTitleEvent(manager, { type: 'session.error', properties: { sessionID: 's1' } })
     handleTabTitleEvent(manager, { type: 'vcs.branch.updated', properties: { branch: 'feature/title' } })
     handleTabTitleEvent(manager, { type: 'session.deleted', properties: { info: { id: 's1' } } })
 
     expect(manager.calls).toEqual([
       'status:s1:busy',
+      'idle:s1',
       'idle:s1',
       'branch:feature/title',
       'remove:s1',
@@ -90,6 +96,33 @@ describe('tab title event routing', () => {
       'needs-input:p2:s1',
       'clear-input:p2',
     ])
+  })
+
+  it('clears resolved permission.updated events instead of leaving stale pending input', () => {
+    expect(route({ type: 'permission.updated', properties: { id: 'p1', sessionID: 's1', status: 'APPROVED' } })).toEqual(['clear-input:p1'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p2', sessionID: 's1', state: 'denied' } })).toEqual(['clear-input:p2'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p3', sessionID: 's1', status: 'pending' } })).toEqual(['needs-input:p3:s1'])
+  })
+
+  it('routes exact v2 question and permission payload ids', () => {
+    const manager = new RecordingTabTitleManager()
+
+    handleTabTitleEvent(manager, { type: 'question.asked', properties: { id: 'q1', sessionID: 's1', questions: [] } })
+    handleTabTitleEvent(manager, { type: 'question.replied', properties: { requestID: 'q1', sessionID: 's1', answers: {} } })
+    handleTabTitleEvent(manager, { type: 'permission.asked', properties: { id: 'p1', sessionID: 's1', permission: 'edit', patterns: [], metadata: {}, always: false } })
+    handleTabTitleEvent(manager, { type: 'permission.replied', properties: { requestID: 'p1', sessionID: 's1', reply: 'allow' } })
+
+    expect(manager.calls).toEqual([
+      'needs-input:q1:s1',
+      'clear-input:q1',
+      'needs-input:p1:s1',
+      'clear-input:p1',
+    ])
+  })
+
+  it('routes disposal events to manager cleanup', () => {
+    expect(route({ type: 'server.instance.disposed', properties: {} })).toEqual(['destroy'])
+    expect(route({ type: 'global.disposed', properties: {} })).toEqual(['destroy'])
   })
 
   it('does not mark pending input without a session id', () => {

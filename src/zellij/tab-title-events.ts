@@ -16,6 +16,7 @@ export interface TabTitleEventManager {
   markNeedsInput: (id: string, sessionID: string) => void
   clearNeedsInput: (id: string) => void
   setBranch: (branch: string | undefined) => void
+  destroy?: () => void
 }
 
 export type BranchReader = (worktree: string) => Promise<string>
@@ -58,6 +59,14 @@ function sessionStatusProperty(object: Record<string, unknown>): OpenCodeSession
 
 function inputRequestID(object: Record<string, unknown>): string | undefined {
   return stringProperty(object, 'id') ?? stringProperty(object, 'requestID') ?? stringProperty(object, 'permissionID')
+}
+
+function inputState(object: Record<string, unknown>): string | undefined {
+  return (stringProperty(object, 'status') ?? stringProperty(object, 'state') ?? stringProperty(object, 'type'))?.toLowerCase()
+}
+
+function isResolvedInputState(state: string | undefined): boolean {
+  return state === 'approved' || state === 'denied' || state === 'rejected' || state === 'resolved' || state === 'replied'
 }
 
 export function deletedSessionID(event: OpenCodeEventLike): string | undefined {
@@ -108,16 +117,31 @@ export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event
         tabTitleManager.markSessionIdle(sessionID)
       break
     }
+    case 'session.error': {
+      const sessionID = stringProperty(properties, 'sessionID')
+      if (sessionID)
+        tabTitleManager.markSessionIdle(sessionID)
+      break
+    }
     case 'vcs.branch.updated': {
       tabTitleManager.setBranch(stringProperty(properties, 'branch'))
       break
     }
     case 'question.asked':
-    case 'permission.asked':
-    case 'permission.updated': {
+    case 'permission.asked': {
       const id = inputRequestID(properties)
       const sessionID = stringProperty(properties, 'sessionID')
       if (id && sessionID)
+        tabTitleManager.markNeedsInput(id, sessionID)
+      break
+    }
+    case 'permission.updated': {
+      const id = inputRequestID(properties)
+      const sessionID = stringProperty(properties, 'sessionID')
+      const state = inputState(properties)
+      if (id && isResolvedInputState(state))
+        tabTitleManager.clearNeedsInput(id)
+      else if (id && sessionID)
         tabTitleManager.markNeedsInput(id, sessionID)
       break
     }
@@ -133,6 +157,11 @@ export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event
       const sessionID = deletedSessionID(event)
       if (sessionID)
         tabTitleManager.removeSession(sessionID)
+      break
+    }
+    case 'server.instance.disposed':
+    case 'global.disposed': {
+      tabTitleManager.destroy?.()
       break
     }
   }
