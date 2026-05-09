@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import ZellijPtyPlugin, { showUpdateToast } from './plugin.js'
+import ZellijPtyPlugin, { createZellijPtyPlugin, showUpdateToast, startAutoUpdateCheck } from './plugin.js'
 import type { UpdateResult } from './auto-update.js'
 
 const ptyToolNames = [
@@ -68,6 +68,36 @@ describe('ZellijPtyPlugin', () => {
     const plugin = await ZellijPtyPlugin(pluginInput(project), {})
 
     expect(Object.keys(plugin.tool ?? {}).sort()).toEqual(ptyToolNamesWithoutSudo)
+  })
+
+  it('starts auto-update during plugin initialization without waiting for events', async () => {
+    const project = join(tempRoot, 'project')
+    const calls: string[] = []
+    const pluginFactory = createZellijPtyPlugin({
+      importMetaUrl: 'file:///plugin/dist/index.mjs',
+      startAutoUpdateCheck: (_client, importMetaUrl) => {
+        calls.push(importMetaUrl)
+      },
+    })
+
+    await pluginFactory(pluginInput(project), {})
+
+    expect(calls).toEqual(['file:///plugin/dist/index.mjs'])
+  })
+
+  it('does not start auto-update when disabled by config', async () => {
+    const project = join(tempRoot, 'project')
+    await writeProjectConfig(project, '{ "autoUpdate": { "enabled": false } }')
+    const calls: string[] = []
+    const pluginFactory = createZellijPtyPlugin({
+      startAutoUpdateCheck: () => {
+        calls.push('called')
+      },
+    })
+
+    await pluginFactory(pluginInput(project), {})
+
+    expect(calls).toEqual([])
   })
 
   it('keeps sudo tool visible when sudoPane is deny', async () => {
@@ -158,6 +188,64 @@ describe('showUpdateToast', () => {
     // Should not throw
     showUpdateToast(client, result)
     // Allow microtask queue to process the rejected promise
+    await new Promise(resolve => setTimeout(resolve, 10))
+  })
+})
+
+describe('startAutoUpdateCheck', () => {
+  function mockClient(): { calls: unknown[], client: Parameters<typeof startAutoUpdateCheck>[0] } {
+    const calls: unknown[] = []
+    return {
+      calls,
+      client: {
+        tui: {
+          showToast: (options: unknown) => {
+            calls.push(options)
+            return Promise.resolve()
+          },
+        },
+      },
+    }
+  }
+
+  it('runs auto-update immediately and shows update toast', async () => {
+    const { calls, client } = mockClient()
+    const seenImportUrls: string[] = []
+
+    startAutoUpdateCheck(client, 'file:///plugin/dist/index.mjs', async (options) => {
+      seenImportUrls.push(options.importMetaUrl)
+      return { type: 'updated', fromVersion: '0.0.5', toVersion: '0.0.6' }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(seenImportUrls).toEqual(['file:///plugin/dist/index.mjs'])
+    expect(calls).toEqual([{ body: { title: 'opencode-zellij updated', message: 'Updated to 0.0.6. Restart OpenCode to apply the changes.', variant: 'success', duration: 10_000 } }])
+  })
+
+  it('swallows rejected update checks', async () => {
+    const { calls, client } = mockClient()
+
+    startAutoUpdateCheck(client, 'file:///plugin/dist/index.mjs', async () => {
+      throw new Error('network failed')
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(calls).toEqual([])
+  })
+
+  it('swallows synchronous toast failures from update checks', async () => {
+    const client = {
+      tui: {
+        showToast: () => {
+          throw new Error('toast failed')
+        },
+      },
+    }
+
+    startAutoUpdateCheck(client, 'file:///plugin/dist/index.mjs', async () => ({ type: 'updated', fromVersion: '0.0.5', toVersion: '0.0.6' }))
+
     await new Promise(resolve => setTimeout(resolve, 10))
   })
 })

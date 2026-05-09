@@ -28,6 +28,7 @@ async function createCachedInstall(tempRoot: string, cacheSpec: string, version:
   await mkdir(pluginDir, { recursive: true })
   await writeFile(join(installRoot, 'package.json'), JSON.stringify({ dependencies: { [PACKAGE_NAME]: version } }))
   await writeFile(join(pluginDir, '..', 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version }))
+  await writeFile(join(pluginDir, 'index.mjs'), '')
   return { installRoot, moduleUrl: `file://${pluginDir}/auto-update.mjs` }
 }
 
@@ -92,9 +93,16 @@ describe('auto-update', () => {
 
   describe('runNpmInstall', () => {
     it('returns true when exec succeeds', async () => {
-      const execImpl: ExecFileLike = async () => ({ stdout: '', stderr: '' })
+      const installRoot = join(tempRoot, 'cache', `${PACKAGE_NAME}@latest`)
+      const packageDir = join(installRoot, 'node_modules', PACKAGE_NAME)
+      const execImpl: ExecFileLike = async () => {
+        await mkdir(join(packageDir, 'dist'), { recursive: true })
+        await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.3' }))
+        await writeFile(join(packageDir, 'dist', 'index.mjs'), '')
+        return { stdout: '', stderr: '' }
+      }
 
-      const result = await runNpmInstall('/some/root', '0.0.3', execImpl)
+      const result = await runNpmInstall(installRoot, '0.0.3', execImpl)
 
       expect(result).toBe(true)
     })
@@ -127,6 +135,9 @@ describe('auto-update', () => {
         `${PACKAGE_NAME}@0.0.5`,
         '--save-exact',
         '--ignore-scripts',
+        '--no-audit',
+        '--no-fund',
+        '--prefer-online',
       ])
     })
 
@@ -140,8 +151,9 @@ describe('auto-update', () => {
       const execImpl: ExecFileLike = async () => {
         calls += 1
         if (calls === 2) {
-          await mkdir(packageDir, { recursive: true })
+          await mkdir(join(packageDir, 'dist'), { recursive: true })
           await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
+          await writeFile(join(packageDir, 'dist', 'index.mjs'), '')
         }
         return { stdout: '', stderr: '' }
       }
@@ -186,6 +198,27 @@ describe('auto-update', () => {
       }
 
       await expect(runNpmInstall(installRoot, '0.0.5', execImpl)).resolves.toBe(false)
+    })
+
+    it('restores the previous package when forced reinstall fails', async () => {
+      const installRoot = join(tempRoot, 'cache', `${PACKAGE_NAME}@latest`)
+      const packageDir = join(installRoot, 'node_modules', PACKAGE_NAME)
+      await mkdir(join(packageDir, 'dist'), { recursive: true })
+      await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.4' }))
+      await writeFile(join(packageDir, 'dist', 'index.mjs'), 'old')
+
+      let calls = 0
+      const execImpl: ExecFileLike = async () => {
+        calls += 1
+        if (calls === 2)
+          throw new Error('npm failed')
+        return { stdout: '', stderr: '' }
+      }
+
+      await expect(runNpmInstall(installRoot, '0.0.5', execImpl)).resolves.toBe(false)
+      expect(calls).toBe(2)
+      expect(JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8')).version).toBe('0.0.4')
+      expect(await readFile(join(packageDir, 'dist', 'index.mjs'), 'utf8')).toBe('old')
     })
   })
 
@@ -256,7 +289,9 @@ describe('auto-update', () => {
         fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
         execImpl: async () => {
           execCalled = true
+          await mkdir(join(install.installRoot, 'node_modules', PACKAGE_NAME, 'dist'), { recursive: true })
           await writeFile(packageJson, JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
+          await writeFile(join(install.installRoot, 'node_modules', PACKAGE_NAME, 'dist', 'index.mjs'), '')
           return { stdout: '', stderr: '' }
         },
       })
@@ -275,7 +310,9 @@ describe('auto-update', () => {
         fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
         execImpl: async () => {
           execCalled = true
+          await mkdir(join(install.installRoot, 'node_modules', PACKAGE_NAME, 'dist'), { recursive: true })
           await writeFile(packageJson, JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
+          await writeFile(join(install.installRoot, 'node_modules', PACKAGE_NAME, 'dist', 'index.mjs'), '')
           return { stdout: '', stderr: '' }
         },
       })
@@ -313,6 +350,40 @@ describe('auto-update', () => {
       })
 
       expect(result).toEqual({ type: 'failed', currentVersion: '0.0.1', latestVersion: '0.0.5', reason: 'npm install failed' })
+    })
+
+    it('skips concurrent updates for the same install root', async () => {
+      const install = await createCachedInstall(tempRoot, `${PACKAGE_NAME}@latest`, '0.0.1')
+      const packageDir = join(install.installRoot, 'node_modules', PACKAGE_NAME)
+      let installCalls = 0
+      let releaseInstall: (() => void) | undefined
+      const execImpl: ExecFileLike = async () => {
+        installCalls += 1
+        await new Promise<void>((resolve) => {
+          releaseInstall = resolve
+        })
+        await mkdir(join(packageDir, 'dist'), { recursive: true })
+        await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
+        await writeFile(join(packageDir, 'dist', 'index.mjs'), '')
+        return { stdout: '', stderr: '' }
+      }
+
+      const first = checkAndUpdate({
+        importMetaUrl: install.moduleUrl,
+        fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
+        execImpl,
+      })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      const second = await checkAndUpdate({
+        importMetaUrl: install.moduleUrl,
+        fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
+        execImpl,
+      })
+      releaseInstall?.()
+
+      expect(await first).toEqual({ type: 'updated', fromVersion: '0.0.1', toVersion: '0.0.5' })
+      expect(second).toEqual({ type: 'skipped', reason: 'update already in progress' })
+      expect(installCalls).toBe(1)
     })
   })
 })

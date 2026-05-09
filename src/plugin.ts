@@ -35,10 +35,6 @@ function getWorkspaceRoot(input: { directory?: string | undefined, worktree?: st
   return input.worktree || input.directory || process.cwd()
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 export interface ToastClient {
   tui: {
     showToast: (options: {
@@ -75,87 +71,94 @@ export function showUpdateToast(client: ToastClient, result: UpdateResult): void
   }
 }
 
-function isRootSessionCreated(event: OpenCodeEventLike): boolean {
-  if (event.type !== 'session.created')
-    return false
-  if (!isRecord(event.properties))
-    return true
-  const info = event.properties.info
-  if (!isRecord(info))
-    return true
-  return !info.parentID
+export function startAutoUpdateCheck(
+  client: ToastClient,
+  importMetaUrl: string,
+  check: typeof checkAndUpdate = checkAndUpdate,
+): void {
+  ;(async () => {
+    try {
+      showUpdateToast(client, await check({ importMetaUrl }))
+    }
+    catch (cause) {
+      debug('auto-update check failed', cause instanceof Error ? cause.message : String(cause))
+    }
+  })()
 }
 
-export const ZellijPtyPlugin: Plugin = async (input) => {
-  const { config, warnings } = await loadConfig(input)
-  for (const warning of warnings) {
-    debug(warning)
-  }
-  configurePolicy({ allowSudoPane: config.pty.sudoPane === 'allow' })
-  cleanupStaleWatchdogRegistries()
-  registerShutdownCleanup()
+export interface ZellijPtyPluginDependencies {
+  importMetaUrl?: string | undefined
+  startAutoUpdateCheck?: typeof startAutoUpdateCheck | undefined
+}
 
-  const workspaceRoot = getWorkspaceRoot(input)
-  const projectName = getProjectName(workspaceRoot)
-  const branchName = config.tabTitle.enabled && shouldReadInitialBranch(process.env.ZELLIJ) ? await getInitialBranch(workspaceRoot) : undefined
-  const tabTitleManager = config.tabTitle.enabled
-    ? new TabTitleManager({
-        projectName,
-        branchName,
-        debounceMs: config.tabTitle.debounceMs,
-        emojis: {
-          idle: config.tabTitle.emojiIdle,
-          running: config.tabTitle.emojiRunning,
-          needsInput: config.tabTitle.emojiNeedsInput,
-          branch: config.tabTitle.emojiBranch,
-        },
-      })
-    : undefined
+export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies = {}): Plugin {
+  return async (input) => {
+    const { config, warnings } = await loadConfig(input)
+    for (const warning of warnings) {
+      debug(warning)
+    }
+    configurePolicy({ allowSudoPane: config.pty.sudoPane === 'allow' })
+    cleanupStaleWatchdogRegistries()
+    registerShutdownCleanup()
 
-  // Best-effort initial render; no-op when not inside a real Zellij pane.
-  tabTitleManager?.renderImmediate().catch(() => {})
+    const workspaceRoot = getWorkspaceRoot(input)
+    const projectName = getProjectName(workspaceRoot)
+    const branchName = config.tabTitle.enabled && shouldReadInitialBranch(process.env.ZELLIJ) ? await getInitialBranch(workspaceRoot) : undefined
+    const tabTitleManager = config.tabTitle.enabled
+      ? new TabTitleManager({
+          projectName,
+          branchName,
+          debounceMs: config.tabTitle.debounceMs,
+          emojis: {
+            idle: config.tabTitle.emojiIdle,
+            running: config.tabTitle.emojiRunning,
+            needsInput: config.tabTitle.emojiNeedsInput,
+            branch: config.tabTitle.emojiBranch,
+          },
+        })
+      : undefined
 
-  let hasCheckedUpdate = false
-  const client = input.client
+    // Best-effort initial render; no-op when not inside a real Zellij pane.
+    tabTitleManager?.renderImmediate().catch(() => {})
 
-  return {
-    async event(input) {
-      const event: OpenCodeEventLike = input.event
+    const client = input.client
 
-      if (!hasCheckedUpdate && config.autoUpdate.enabled && isRootSessionCreated(event)) {
-        hasCheckedUpdate = true
-        checkAndUpdate({ importMetaUrl: import.meta.url }).then(
-          result => showUpdateToast(client, result),
-          (cause: unknown) => debug('auto-update check failed', cause instanceof Error ? cause.message : String(cause)),
-        )
-      }
+    if (config.autoUpdate.enabled)
+      (dependencies.startAutoUpdateCheck ?? startAutoUpdateCheck)(client, dependencies.importMetaUrl ?? import.meta.url)
 
-      if (tabTitleManager)
-        handleTabTitleEvent(tabTitleManager, event)
+    return {
+      async event(input) {
+        const event: OpenCodeEventLike = input.event
 
-      if (event.type === 'session.deleted') {
-        const sessionID = deletedSessionID(event)
-        if (!sessionID)
-          return
+        if (tabTitleManager)
+          handleTabTitleEvent(tabTitleManager, event)
 
-        const sessions = sessionManager.listByOpenCodeSession(sessionID)
-        await Promise.all(
-          sessions.map(async (session) => {
-            await subscriberManager.closeSessionPane(session.id)
-            subscriberManager.forget(session.id)
-            unregisterPaneFromWatchdog(session.id)
-            sessionManager.remove(session.id)
-          }),
-        )
-      }
-    },
-    tool: config.pty.enabled
-      ? {
-          ...ptyTools,
-          ...(config.pty.sudoPane === 'hide' ? {} : { zellij_pty_request_sudo: requestSudoTool }),
+        if (event.type === 'session.deleted') {
+          const sessionID = deletedSessionID(event)
+          if (!sessionID)
+            return
+
+          const sessions = sessionManager.listByOpenCodeSession(sessionID)
+          await Promise.all(
+            sessions.map(async (session) => {
+              await subscriberManager.closeSessionPane(session.id)
+              subscriberManager.forget(session.id)
+              unregisterPaneFromWatchdog(session.id)
+              sessionManager.remove(session.id)
+            }),
+          )
         }
-      : {},
+      },
+      tool: config.pty.enabled
+        ? {
+            ...ptyTools,
+            ...(config.pty.sudoPane === 'hide' ? {} : { zellij_pty_request_sudo: requestSudoTool }),
+          }
+        : {},
+    }
   }
 }
+
+export const ZellijPtyPlugin: Plugin = createZellijPtyPlugin()
 
 export default ZellijPtyPlugin
