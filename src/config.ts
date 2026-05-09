@@ -24,9 +24,14 @@ export interface PtyConfig {
 
 export type SudoPaneMode = z.infer<typeof sudoPaneSchema>
 
+export interface AutoUpdateConfig {
+  enabled: boolean
+}
+
 export interface ZellijPluginConfig {
   tabTitle: TabTitleConfig
   pty: PtyConfig
+  autoUpdate: AutoUpdateConfig
 }
 
 export interface LoadConfigInput {
@@ -62,10 +67,15 @@ const ptyLayerSchema = z.object({
   sudoPane: sudoPaneSchema.optional().describe('Controls whether the sudo pane tool is available, denied, or hidden.'),
 }).strict()
 
+const autoUpdateLayerSchema = z.object({
+  enabled: z.boolean().optional().describe('Enable automatic update checks for the opencode-zellij plugin.'),
+}).strict()
+
 export const sidecarConfigSchema = z.object({
   $schema: z.string().optional().describe('JSON Schema URI for editor completion.'),
   tabTitle: tabTitleLayerSchema.optional(),
   pty: ptyLayerSchema.optional(),
+  autoUpdate: autoUpdateLayerSchema.optional(),
 }).strict()
 
 export const defaultConfig: ZellijPluginConfig = {
@@ -81,9 +91,12 @@ export const defaultConfig: ZellijPluginConfig = {
     enabled: true,
     sudoPane: 'allow',
   },
+  autoUpdate: {
+    enabled: true,
+  },
 }
 
-type ConfigLayer = Pick<z.infer<typeof sidecarConfigSchema>, 'tabTitle' | 'pty'>
+type ConfigLayer = Pick<z.infer<typeof sidecarConfigSchema>, 'tabTitle' | 'pty' | 'autoUpdate'>
 
 function validConfigLayer(value: unknown): ConfigLayer | undefined {
   const result = sidecarConfigSchema.safeParse(value)
@@ -93,6 +106,7 @@ function validConfigLayer(value: unknown): ConfigLayer | undefined {
   return {
     tabTitle: result.data.tabTitle,
     pty: result.data.pty,
+    autoUpdate: result.data.autoUpdate,
   }
 }
 
@@ -109,6 +123,9 @@ function mergeConfig(user?: ConfigLayer | undefined, project?: ConfigLayer | und
     pty: {
       enabled: project?.pty?.enabled ?? user?.pty?.enabled ?? defaultConfig.pty.enabled,
       sudoPane: project?.pty?.sudoPane ?? user?.pty?.sudoPane ?? defaultConfig.pty.sudoPane,
+    },
+    autoUpdate: {
+      enabled: project?.autoUpdate?.enabled ?? user?.autoUpdate?.enabled ?? defaultConfig.autoUpdate.enabled,
     },
   }
 }
@@ -140,11 +157,11 @@ function detectConfigFile(directory: string): string | undefined {
     .find(path => existsSync(path))
 }
 
-function userConfigDir(): string {
+export function userConfigDir(): string {
   return process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, 'opencode') : join(homedir(), '.config', 'opencode')
 }
 
-function projectConfigDirs(input: LoadConfigInput): string[] {
+export function projectConfigDirs(input: LoadConfigInput): string[] {
   const dirs: string[] = []
   if (input.worktree)
     dirs.push(join(input.worktree, '.opencode'))

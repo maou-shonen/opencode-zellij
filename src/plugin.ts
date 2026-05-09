@@ -1,6 +1,8 @@
 import type { Plugin } from '@opencode-ai/plugin'
+import type { UpdateResult } from './auto-update.js'
 import type { OpenCodeEventLike } from './zellij/tab-title-events.js'
 import process from 'node:process'
+import { checkAndUpdate } from './auto-update.js'
 import { loadConfig } from './config.js'
 import { configurePolicy } from './permissions/policy.js'
 import { sessionManager } from './pty/manager.js'
@@ -33,6 +35,57 @@ function getWorkspaceRoot(input: { directory?: string | undefined, worktree?: st
   return input.worktree || input.directory || process.cwd()
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+export interface ToastClient {
+  tui: {
+    showToast: (options: {
+      body: {
+        title: string
+        message: string
+        variant: 'success' | 'error'
+        duration: number
+      }
+    }) => Promise<unknown>
+  }
+}
+
+export function showUpdateToast(client: ToastClient, result: UpdateResult): void {
+  if (result.type === 'updated') {
+    client.tui.showToast({
+      body: {
+        title: 'opencode-zellij updated',
+        message: `Updated to ${result.toVersion}. Restart OpenCode to apply the changes.`,
+        variant: 'success',
+        duration: 10_000,
+      },
+    }).catch(() => {})
+  }
+  else if (result.type === 'failed') {
+    client.tui.showToast({
+      body: {
+        title: 'opencode-zellij update failed',
+        message: `Failed to update to ${result.latestVersion}.`,
+        variant: 'error',
+        duration: 8_000,
+      },
+    }).catch(() => {})
+  }
+}
+
+function isRootSessionCreated(event: OpenCodeEventLike): boolean {
+  if (event.type !== 'session.created')
+    return false
+  if (!isRecord(event.properties))
+    return true
+  const info = event.properties.info
+  if (!isRecord(info))
+    return true
+  return !info.parentID
+}
+
 export const ZellijPtyPlugin: Plugin = async (input) => {
   const { config, warnings } = await loadConfig(input)
   for (const warning of warnings) {
@@ -62,9 +115,21 @@ export const ZellijPtyPlugin: Plugin = async (input) => {
   // Best-effort initial render; no-op when not inside a real Zellij pane.
   tabTitleManager?.renderImmediate().catch(() => {})
 
+  let hasCheckedUpdate = false
+  const client = input.client
+
   return {
     async event(input) {
       const event: OpenCodeEventLike = input.event
+
+      if (!hasCheckedUpdate && config.autoUpdate.enabled && isRootSessionCreated(event)) {
+        hasCheckedUpdate = true
+        checkAndUpdate({ importMetaUrl: import.meta.url }).then(
+          result => showUpdateToast(client, result),
+          (cause: unknown) => debug('auto-update check failed', cause instanceof Error ? cause.message : String(cause)),
+        )
+      }
+
       if (tabTitleManager)
         handleTabTitleEvent(tabTitleManager, event)
 

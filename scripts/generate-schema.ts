@@ -40,6 +40,7 @@ export function generateJsonSchema(): JsonObject {
   setDefault(schema, ['tabTitle', 'debounceMs'], defaultConfig.tabTitle.debounceMs)
   setDefault(schema, ['pty', 'enabled'], defaultConfig.pty.enabled)
   setDefault(schema, ['pty', 'sudoPane'], defaultConfig.pty.sudoPane)
+  setDefault(schema, ['autoUpdate', 'enabled'], defaultConfig.autoUpdate.enabled)
 
   return schema
 }

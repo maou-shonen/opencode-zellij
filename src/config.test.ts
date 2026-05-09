@@ -65,6 +65,14 @@ describe('plugin config', () => {
     expect(result.config.pty.sudoPane).toBe('hide')
   })
 
+  it('supports disabling auto update', async () => {
+    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', '{ "autoUpdate": { "enabled": false } }')
+
+    const result = await loadConfig({ directory: join(tempRoot, 'project') })
+
+    expect(result.config.autoUpdate.enabled).toBe(false)
+  })
+
   it('ignores pre-release legacy basename files', async () => {
     await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.jsonc', '{ "tabTitle": { "emojiIdle": "legacy" } }')
 
