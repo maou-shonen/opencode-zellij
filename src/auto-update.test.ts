@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -129,6 +129,64 @@ describe('auto-update', () => {
         '--ignore-scripts',
       ])
     })
+
+    it('removes and reinstalls a stale package directory when npm reports success but files stay old', async () => {
+      const installRoot = join(tempRoot, 'cache', `${PACKAGE_NAME}@latest`)
+      const packageDir = join(installRoot, 'node_modules', PACKAGE_NAME)
+      await mkdir(packageDir, { recursive: true })
+      await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.4' }))
+
+      let calls = 0
+      const execImpl: ExecFileLike = async () => {
+        calls += 1
+        if (calls === 2) {
+          await mkdir(packageDir, { recursive: true })
+          await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
+        }
+        return { stdout: '', stderr: '' }
+      }
+
+      const result = await runNpmInstall(installRoot, '0.0.5', execImpl)
+
+      expect(result).toBe(true)
+      expect(calls).toBe(2)
+      expect(JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8')).version).toBe('0.0.5')
+    })
+
+    it('returns false when reinstall still leaves a stale package version', async () => {
+      const installRoot = join(tempRoot, 'cache', `${PACKAGE_NAME}@latest`)
+      const packageDir = join(installRoot, 'node_modules', PACKAGE_NAME)
+      await mkdir(packageDir, { recursive: true })
+      await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.4' }))
+
+      let calls = 0
+      const execImpl: ExecFileLike = async () => {
+        calls += 1
+        await mkdir(packageDir, { recursive: true })
+        await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.4' }))
+        return { stdout: '', stderr: '' }
+      }
+
+      const result = await runNpmInstall(installRoot, '0.0.5', execImpl)
+
+      expect(result).toBe(false)
+      expect(calls).toBe(2)
+    })
+
+    it('returns false when reinstall leaves an unexpected package name', async () => {
+      const installRoot = join(tempRoot, 'cache', `${PACKAGE_NAME}@latest`)
+      const packageDir = join(installRoot, 'node_modules', PACKAGE_NAME)
+      await mkdir(packageDir, { recursive: true })
+      await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.4' }))
+
+      const execImpl: ExecFileLike = async () => {
+        await mkdir(packageDir, { recursive: true })
+        await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: 'other-package', version: '0.0.5' }))
+        return { stdout: '', stderr: '' }
+      }
+
+      await expect(runNpmInstall(installRoot, '0.0.5', execImpl)).resolves.toBe(false)
+    })
   })
 
   describe('checkAndUpdate', () => {
@@ -190,6 +248,7 @@ describe('auto-update', () => {
 
     it('returns updated for @latest cache specs', async () => {
       const install = await createCachedInstall(tempRoot, `${PACKAGE_NAME}@latest`, '0.0.1')
+      const packageJson = join(install.installRoot, 'node_modules', PACKAGE_NAME, 'package.json')
       let execCalled = false
 
       const result = await checkAndUpdate({
@@ -197,6 +256,7 @@ describe('auto-update', () => {
         fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
         execImpl: async () => {
           execCalled = true
+          await writeFile(packageJson, JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
           return { stdout: '', stderr: '' }
         },
       })
@@ -207,6 +267,7 @@ describe('auto-update', () => {
 
     it('returns updated for bare package cache specs', async () => {
       const install = await createCachedInstall(tempRoot, PACKAGE_NAME, '0.0.1')
+      const packageJson = join(install.installRoot, 'node_modules', PACKAGE_NAME, 'package.json')
       let execCalled = false
 
       const result = await checkAndUpdate({
@@ -214,6 +275,7 @@ describe('auto-update', () => {
         fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
         execImpl: async () => {
           execCalled = true
+          await writeFile(packageJson, JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
           return { stdout: '', stderr: '' }
         },
       })

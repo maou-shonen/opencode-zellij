@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -13,6 +13,40 @@ const FETCH_TIMEOUT_MS = 5_000
 const INSTALL_TIMEOUT_MS = 60_000
 
 const defaultExecFile = promisify(execFile)
+
+function packageDir(installRoot: string): string {
+  return join(installRoot, 'node_modules', PACKAGE_NAME)
+}
+
+interface InstalledPackageMetadata {
+  name: string | undefined
+  version: string | undefined
+}
+
+async function installedPackageMetadata(installRoot: string): Promise<InstalledPackageMetadata | undefined> {
+  try {
+    const content = await readFile(join(packageDir(installRoot), 'package.json'), 'utf8')
+    const pkg: unknown = JSON.parse(content)
+    if (isRecord(pkg)) {
+      return {
+        name: typeof pkg.name === 'string' ? pkg.name : undefined,
+        version: typeof pkg.version === 'string' ? pkg.version : undefined,
+      }
+    }
+  }
+  catch {
+    // Missing or unreadable package metadata is handled by the caller.
+  }
+  return undefined
+}
+
+function isExpectedPackage(metadata: InstalledPackageMetadata | undefined, version: string): boolean {
+  return metadata?.name === PACKAGE_NAME && metadata.version === version
+}
+
+async function removeInstalledPackage(installRoot: string): Promise<void> {
+  await rm(packageDir(installRoot), { force: true, recursive: true })
+}
 
 export interface InstallContext {
   installRoot: string
@@ -117,13 +151,38 @@ export async function runNpmInstall(
   debug(`updating ${PACKAGE_NAME} to ${version} in ${installRoot}`)
 
   try {
-    await execImpl(
+    const shouldVerifyInstalledPackage = await installedPackageMetadata(installRoot) !== undefined
+    const install = () => execImpl(
       'npm',
       ['install', `${PACKAGE_NAME}@${version}`, '--save-exact', '--ignore-scripts'],
       { cwd: installRoot, timeout: INSTALL_TIMEOUT_MS },
     )
-    debug(`updated ${PACKAGE_NAME} to ${version}`)
-    return true
+
+    await install()
+
+    if (!shouldVerifyInstalledPackage) {
+      debug(`updated ${PACKAGE_NAME} to ${version}`)
+      return true
+    }
+
+    const installedPackage = await installedPackageMetadata(installRoot)
+    if (isExpectedPackage(installedPackage, version)) {
+      debug(`updated ${PACKAGE_NAME} to ${version}`)
+      return true
+    }
+
+    debug(`npm install left stale or invalid ${PACKAGE_NAME} (${installedPackage?.name ?? '<missing>'}@${installedPackage?.version ?? '<missing>'}); reinstalling ${version}`)
+    await removeInstalledPackage(installRoot)
+    await install()
+
+    const reinstalledPackage = await installedPackageMetadata(installRoot)
+    if (isExpectedPackage(reinstalledPackage, version)) {
+      debug(`updated ${PACKAGE_NAME} to ${version}`)
+      return true
+    }
+
+    debug(`npm install verification failed: expected ${PACKAGE_NAME}@${version}, found ${reinstalledPackage?.name ?? '<missing>'}@${reinstalledPackage?.version ?? '<missing>'}`)
+    return false
   }
   catch (cause) {
     debug('npm install failed', cause instanceof Error ? cause.message : String(cause))
