@@ -43,7 +43,7 @@ function context(): ToolContext {
 
 async function loadPlugin(): Promise<PluginHooks> {
   const mod = (await import(`../../dist/index.mjs?integration=${Date.now()}`)) as PluginModule
-  return mod.default({}, { zellijPty: { allowSudoPane: true } })
+  return mod.default({})
 }
 
 async function killQuietly(hooks: PluginHooks, id: string, ctx: ToolContext): Promise<void> {

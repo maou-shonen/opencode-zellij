@@ -38,6 +38,10 @@ function wildcardMatches(pattern: string, commandLine: string): boolean {
 }
 
 export function configurePolicy(config: unknown): void {
+  configuredDenyCommands = []
+  configuredAllowCommands = []
+  allowSudoPane = true
+
   if (!config || typeof config !== 'object')
     return
   const object = config as Record<string, unknown>
@@ -71,7 +75,7 @@ export function assertCommandAllowed(input: PolicyCheckInput): void {
     throw new Error('sudo commands must use zellij_pty_request_sudo so credentials stay human-input-only and never pass through agent tool input.')
   }
 
-  if (input.humanInputOnly && sudoPattern.test(commandLine) && !allowSudoPane) {
+  if (input.humanInputOnly && !allowSudoPane) {
     throw new Error('sudo pane is disabled by zellij-pty policy.')
   }
 }

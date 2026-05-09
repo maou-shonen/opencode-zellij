@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "JSON Schema URI for editor completion.",
+      "type": "string"
+    },
+    "tabTitle": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable dynamic Zellij tab title updates.",
+          "type": "boolean",
+          "default": true
+        },
+        "emojiIdle": {
+          "description": "Prefix used when OpenCode is idle.",
+          "type": "string",
+          "default": "🟢"
+        },
+        "emojiRunning": {
+          "description": "Prefix used while OpenCode is running work.",
+          "type": "string",
+          "default": "⚡"
+        },
+        "emojiNeedsInput": {
+          "description": "Prefix used when OpenCode is waiting for human input.",
+          "type": "string",
+          "default": "💬"
+        },
+        "emojiBranch": {
+          "description": "Prefix used before the current git branch name.",
+          "type": "string",
+          "default": "🌱"
+        },
+        "debounceMs": {
+          "description": "Debounce time for tab title updates in milliseconds.",
+          "type": "number",
+          "minimum": 0,
+          "default": 300
+        }
+      },
+      "additionalProperties": false
+    },
+    "pty": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable Zellij-backed PTY tools.",
+          "type": "boolean",
+          "default": true
+        },
+        "sudoPane": {
+          "description": "Controls whether the sudo pane tool is available, denied, or hidden.",
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny",
+            "hide"
+          ],
+          "default": "allow"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$id": "https://raw.githubusercontent.com/maou-shonen/opencode-zellij/main/opencode-zellij.schema.json",
+  "title": "opencode-zellij config"
+}
