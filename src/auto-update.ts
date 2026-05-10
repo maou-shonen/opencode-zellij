@@ -1,9 +1,7 @@
 import { execFile } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { debug } from './utils/debug.js'
@@ -13,16 +11,11 @@ export const PACKAGE_NAME = 'opencode-zellij'
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org/-/package/opencode-zellij/dist-tags'
 const FETCH_TIMEOUT_MS = 5_000
 const INSTALL_TIMEOUT_MS = 60_000
-const LOCK_STALE_MS = INSTALL_TIMEOUT_MS * 2 + FETCH_TIMEOUT_MS + 30_000
 
 const defaultExecFile = promisify(execFile)
 
 function packageDir(installRoot: string): string {
   return join(installRoot, 'node_modules', PACKAGE_NAME)
-}
-
-function lockDir(installRoot: string): string {
-  return join(installRoot, '.opencode-zellij-update.lock')
 }
 
 function backupDir(installRoot: string): string {
@@ -73,52 +66,6 @@ async function isVerifiedInstall(installRoot: string, version: string): Promise<
 
 async function removeInstalledPackage(installRoot: string): Promise<void> {
   await rm(packageDir(installRoot), { force: true, recursive: true })
-}
-
-async function installRootLockIsStale(installRoot: string): Promise<boolean> {
-  try {
-    const content = await readFile(join(lockDir(installRoot), 'owner.json'), 'utf8')
-    const owner: unknown = JSON.parse(content)
-    if (isRecord(owner) && typeof owner.createdAt === 'number')
-      return Date.now() - owner.createdAt > LOCK_STALE_MS
-  }
-  catch {
-    return true
-  }
-  return false
-}
-
-async function acquireInstallLock(installRoot: string): Promise<(() => Promise<void>) | undefined> {
-  const dir = lockDir(installRoot)
-  const token = randomUUID()
-  try {
-    await mkdir(dir)
-  }
-  catch {
-    if (!(await installRootLockIsStale(installRoot)))
-      return undefined
-    await rm(dir, { force: true, recursive: true })
-    try {
-      await mkdir(dir)
-    }
-    catch {
-      return undefined
-    }
-  }
-
-  await writeFile(join(dir, 'owner.json'), JSON.stringify({ pid: process.pid, token, createdAt: Date.now() }))
-  return async () => {
-    try {
-      const content = await readFile(join(dir, 'owner.json'), 'utf8')
-      const owner: unknown = JSON.parse(content)
-      if (isRecord(owner) && owner.token !== token)
-        return
-    }
-    catch {
-      return
-    }
-    await rm(dir, { force: true, recursive: true })
-  }
 }
 
 async function backupInstalledPackage(installRoot: string): Promise<string | undefined> {
@@ -312,34 +259,23 @@ export async function checkAndUpdate(options: CheckOptions): Promise<UpdateResul
     return { type: 'skipped', reason: `cache spec is pinned or unknown (${context.cacheSpec})` }
   }
 
-  const releaseLock = await acquireInstallLock(context.installRoot)
-  if (!releaseLock) {
-    debug(`skipping auto-update: update already in progress for ${context.installRoot}`)
-    return { type: 'skipped', reason: 'update already in progress' }
+  const latest = await fetchLatestVersion(options.fetchImpl)
+  if (!latest) {
+    debug('skipping auto-update: could not determine latest version')
+    return { type: 'skipped', reason: 'could not determine latest version' }
   }
 
-  try {
-    const latest = await fetchLatestVersion(options.fetchImpl)
-    if (!latest) {
-      debug('skipping auto-update: could not determine latest version')
-      return { type: 'skipped', reason: 'could not determine latest version' }
-    }
-
-    const installedVersion = (await installedPackageMetadata(context.installRoot))?.version ?? context.currentVersion
-    if (latest === installedVersion) {
-      debug(`auto-update: already on latest ${latest}`)
-      return { type: 'up-to-date', currentVersion: installedVersion }
-    }
-
-    const success = await runNpmInstall(context.installRoot, latest, options.execImpl)
-    if (success) {
-      debug(`updated ${PACKAGE_NAME} from ${installedVersion} to ${latest}`)
-      return { type: 'updated', fromVersion: installedVersion, toVersion: latest }
-    }
-
-    return { type: 'failed', currentVersion: installedVersion, latestVersion: latest, reason: 'npm install failed' }
+  const installedVersion = (await installedPackageMetadata(context.installRoot))?.version ?? context.currentVersion
+  if (latest === installedVersion) {
+    debug(`auto-update: already on latest ${latest}`)
+    return { type: 'up-to-date', currentVersion: installedVersion }
   }
-  finally {
-    await releaseLock()
+
+  const success = await runNpmInstall(context.installRoot, latest, options.execImpl)
+  if (success) {
+    debug(`updated ${PACKAGE_NAME} from ${installedVersion} to ${latest}`)
+    return { type: 'updated', fromVersion: installedVersion, toVersion: latest }
   }
+
+  return { type: 'failed', currentVersion: installedVersion, latestVersion: latest, reason: 'npm install failed' }
 }

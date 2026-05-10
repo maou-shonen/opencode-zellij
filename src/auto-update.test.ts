@@ -352,38 +352,5 @@ describe('auto-update', () => {
       expect(result).toEqual({ type: 'failed', currentVersion: '0.0.1', latestVersion: '0.0.5', reason: 'npm install failed' })
     })
 
-    it('skips concurrent updates for the same install root', async () => {
-      const install = await createCachedInstall(tempRoot, `${PACKAGE_NAME}@latest`, '0.0.1')
-      const packageDir = join(install.installRoot, 'node_modules', PACKAGE_NAME)
-      let installCalls = 0
-      let releaseInstall: (() => void) | undefined
-      const execImpl: ExecFileLike = async () => {
-        installCalls += 1
-        await new Promise<void>((resolve) => {
-          releaseInstall = resolve
-        })
-        await mkdir(join(packageDir, 'dist'), { recursive: true })
-        await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '0.0.5' }))
-        await writeFile(join(packageDir, 'dist', 'index.mjs'), '')
-        return { stdout: '', stderr: '' }
-      }
-
-      const first = checkAndUpdate({
-        importMetaUrl: install.moduleUrl,
-        fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
-        execImpl,
-      })
-      await new Promise(resolve => setTimeout(resolve, 10))
-      const second = await checkAndUpdate({
-        importMetaUrl: install.moduleUrl,
-        fetchImpl: mockFetch(new Response(JSON.stringify({ latest: '0.0.5' }), { status: 200 })),
-        execImpl,
-      })
-      releaseInstall?.()
-
-      expect(await first).toEqual({ type: 'updated', fromVersion: '0.0.1', toVersion: '0.0.5' })
-      expect(second).toEqual({ type: 'skipped', reason: 'update already in progress' })
-      expect(installCalls).toBe(1)
-    })
   })
 })
