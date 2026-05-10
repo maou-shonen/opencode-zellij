@@ -2,6 +2,8 @@ import type { CommandInput } from '../utils/shell-args.js'
 import { execFile, spawnSync } from 'node:child_process'
 import process from 'node:process'
 import { promisify } from 'node:util'
+import { debug } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
 import { parsePaneId } from '../utils/ids.js'
 import { buildCommandArgv } from '../utils/shell-args.js'
 
@@ -110,7 +112,8 @@ export function parseCurrentPaneTabId(listPanesJson: string, paneId: string | un
   try {
     return findPaneTabId(JSON.parse(listPanesJson), parsedPaneId)
   }
-  catch {
+  catch (error) {
+    debug('parseCurrentPaneTabId failed', errorMessage(error))
     return undefined
   }
 }

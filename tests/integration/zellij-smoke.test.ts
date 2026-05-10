@@ -50,8 +50,10 @@ async function killQuietly(hooks: PluginHooks, id: string, ctx: ToolContext): Pr
   try {
     await getTool(hooks, 'zellij_pty_kill').execute({ id }, ctx)
   }
-  catch {
-    // Best-effort cleanup; the assertion failure that led here is more useful.
+  catch (error) {
+    // Best-effort cleanup; keep tests focused on the primary assertion unless debug is enabled.
+    if (process.env.ZELLIJ_PTY_DEBUG)
+      console.warn('killQuietly failed', error instanceof Error ? error.message : String(error))
   }
 }
 

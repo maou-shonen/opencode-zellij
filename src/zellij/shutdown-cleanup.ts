@@ -2,6 +2,8 @@ import type { SessionManager } from '../pty/manager.js'
 import type { SubscriberManager } from './subscribe.js'
 import process from 'node:process'
 import { sessionManager } from '../pty/manager.js'
+import { debug } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
 import { zellijCli } from './cli.js'
 import { subscriberManager } from './subscribe.js'
 
@@ -20,16 +22,18 @@ export function cleanupPanesOnShutdown(
     try {
       zellijCli.closePaneSync(session.paneId)
     }
-    catch {
+    catch (error) {
       // Shutdown cleanup is only a fast best-effort path; the watchdog registry remains as fallback.
+      debug('cleanupPanesOnShutdown closePane failed', errorMessage(error))
     }
 
     subscribers.forget(session.id)
     try {
       sessions.remove(session.id)
     }
-    catch {
+    catch (error) {
       // Another cleanup path may have already removed it.
+      debug('cleanupPanesOnShutdown sessions.remove failed', errorMessage(error))
     }
   }
 }

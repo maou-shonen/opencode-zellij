@@ -1,6 +1,7 @@
 import type { SessionStatus as OpenCodeSessionStatus } from '@opencode-ai/sdk'
 import process from 'node:process'
 import { debug } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
 import { ZellijCli } from './cli.js'
 
 export interface TabTitleCli {
@@ -198,7 +199,8 @@ export class TabTitleManager {
     this.clearDebounceTimer()
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = undefined
-      this.syncDesiredTitle().catch(() => {})
+      this.syncDesiredTitle()
+        .catch(error => debug('debounced tab title sync failed', errorMessage(error)))
     }, this.debounceMs)
     this.unrefTimer(this.debounceTimer)
   }
@@ -239,7 +241,8 @@ export class TabTitleManager {
     this.retryAttempt += 1
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined
-      this.syncDesiredTitle().catch(() => {})
+      this.syncDesiredTitle()
+        .catch(error => debug('retry tab title sync failed', errorMessage(error)))
     }, delay)
     this.unrefTimer(this.retryTimer)
   }

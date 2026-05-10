@@ -6,6 +6,8 @@ import { spawn } from 'node:child_process'
 import process from 'node:process'
 import { sessionManager } from '../pty/manager.js'
 import { RingBuffer } from '../pty/ring-buffer.js'
+import { debug } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
 import { parseExitCodeMarker } from '../utils/exit-code.js'
 import { ensureZellijTarget, zellijCli, zellijCommandArgs } from './cli.js'
 import { unregisterPaneFromWatchdog } from './pane-watchdog.js'
@@ -160,8 +162,9 @@ export class SubscriberManager {
         state.buffer.appendSnapshot(snapshot)
         this.sessions.updateLineCount(session.id, state.buffer.lineCount)
       }
-      catch {
+      catch (error) {
         // dump-screen may race with pane creation; subscribe will still collect future output.
+        debug('dumpScreen failed', errorMessage(error))
       }
     }
   }
@@ -216,8 +219,9 @@ export class SubscriberManager {
     try {
       await zellijCli.closePane(session.paneId)
     }
-    catch {
+    catch (error) {
       // Pane may already be closed by the user or command exit.
+      debug('closePane failed', errorMessage(error))
     }
   }
 
@@ -248,9 +252,10 @@ export class SubscriberManager {
         return
       event = parsed as JsonObject
     }
-    catch {
+    catch (error) {
       state.buffer.append(trimmed)
       this.sessions.updateLineCount(sessionId, state.buffer.lineCount)
+      debug('JSON parse of subscriber event failed, treating as raw text', errorMessage(error))
       return
     }
 
@@ -258,8 +263,9 @@ export class SubscriberManager {
     try {
       session = this.sessions.get(sessionId)
     }
-    catch {
+    catch (error) {
       this.forget(sessionId)
+      debug('session lookup by id failed', errorMessage(error))
       return
     }
     const paneId = eventPaneId(event)

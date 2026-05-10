@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { debug } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
 
 export interface WatchdogPane {
   sessionId: string
@@ -46,8 +48,9 @@ function linuxProcessStartTime(pid: number): string | null {
   try {
     return parseLinuxProcessStartTime(readFileSync(`/proc/${pid}/stat`, 'utf8'))
   }
-  catch {
+  catch (error) {
     // Missing /proc data is expected when the owner has exited or on non-Linux systems.
+    debug('linuxProcessStartTime failed', errorMessage(error))
     return null
   }
 }
@@ -74,8 +77,9 @@ function readRegistry(): WatchdogRegistry {
       return emptyRegistry()
     return parsed
   }
-  catch {
+  catch (error) {
     // The current instance registry is corrupt or unreadable; start from an empty registry.
+    debug('readRegistry failed', errorMessage(error))
     return emptyRegistry()
   }
 }
@@ -137,8 +141,9 @@ export function cleanupStaleWatchdogRegistries(): void {
       closeRegistryPanes(registry)
       rmSync(file, { force: true })
     }
-    catch {
+    catch (error) {
       // Corrupt stale registries cannot be used safely and would otherwise fail every startup.
+      debug('cleanupStaleWatchdogRegistries failed', errorMessage(error))
       rmSync(file, { force: true })
     }
   }
@@ -148,8 +153,9 @@ function ownerStillMatches(registry: WatchdogRegistry): boolean {
   try {
     process.kill(registry.ownerPid, 0)
   }
-  catch {
+  catch (error) {
     // process.kill(pid, 0) throws when the owner is gone or inaccessible.
+    debug('ownerStillMatches kill check failed', errorMessage(error))
     return false
   }
 
@@ -210,8 +216,9 @@ export function removeWatchdogRegistry(): void {
   try {
     rmSync(watchdogRegistryPath(), { force: true })
   }
-  catch {
+  catch (error) {
     // Watchdog registry cleanup is best effort.
+    debug('removeWatchdogRegistry failed', errorMessage(error))
   }
   if (!watchdogChild)
     watchdogStarted = false

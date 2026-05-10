@@ -1,6 +1,8 @@
 import type { SessionStatus as OpenCodeSessionStatus } from '@opencode-ai/sdk'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { debug } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -88,7 +90,8 @@ export async function getInitialBranch(worktree: string, readBranch: BranchReade
   try {
     return (await readBranch(worktree)).trim() || undefined
   }
-  catch {
+  catch (error) {
+    debug('getInitialBranch failed', errorMessage(error))
     return undefined
   }
 }

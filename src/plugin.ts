@@ -58,7 +58,8 @@ export function showUpdateToast(client: ToastClient, result: UpdateResult): void
         variant: 'success',
         duration: 10_000,
       },
-    }).catch(() => {})
+    })
+      .catch(error => debug('show update toast for successful update failed', errorMessage(error)))
   }
   else if (result.type === 'failed') {
     client.tui.showToast({
@@ -68,7 +69,8 @@ export function showUpdateToast(client: ToastClient, result: UpdateResult): void
         variant: 'error',
         duration: 8_000,
       },
-    }).catch(() => {})
+    })
+      .catch(error => debug('show update toast for failed update failed', errorMessage(error)))
   }
 }
 
@@ -136,7 +138,8 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       : undefined
 
     // Best-effort initial render; no-op when not inside a real Zellij pane.
-    tabTitleManager?.renderImmediate().catch(() => {})
+    tabTitleManager?.renderImmediate()
+      .catch(error => debug('initial tab title render failed', errorMessage(error)))
 
     const client = input.client
 

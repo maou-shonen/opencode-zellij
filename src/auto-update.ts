@@ -5,6 +5,7 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { debug } from './utils/debug.js'
+import { errorMessage } from './utils/errors.js'
 
 export const PACKAGE_NAME = 'opencode-zellij'
 
@@ -40,8 +41,9 @@ async function installedPackageMetadata(installRoot: string): Promise<InstalledP
       }
     }
   }
-  catch {
+  catch (error) {
     // Missing or unreadable package metadata is handled by the caller.
+    debug('installedPackageMetadata failed', errorMessage(error))
   }
   return undefined
 }
@@ -128,8 +130,9 @@ export async function findInstallContext(importMetaUrl: string): Promise<Install
           }
         }
       }
-      catch {
+      catch (error) {
         // ignore unreadable or invalid package.json
+        debug('findInstallContext package.json read failed', errorMessage(error))
       }
     }
 

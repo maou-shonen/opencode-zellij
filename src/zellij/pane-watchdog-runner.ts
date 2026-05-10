@@ -2,6 +2,22 @@ import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import process from 'node:process'
 
+const registryPath = process.argv[2]
+const pollIntervalMs = 1_000
+
+function writeWatchdogDebug(message: string, error: unknown): void {
+  if (!process.env.ZELLIJ_PTY_DEBUG)
+    return
+
+  try {
+    appendFileSync(`${registryPath}.log`, `${new Date().toISOString()} ${message}: ${error instanceof Error ? error.message : String(error)}\n`)
+  }
+  catch (loggingError) {
+    void loggingError
+    // The watchdog has no stderr; if file logging fails, there is nowhere else to report diagnostics.
+  }
+}
+
 interface WatchdogPane {
   paneId: string
 }
@@ -12,9 +28,6 @@ interface WatchdogRegistry {
   zellijSessionName?: string | null | undefined
   panes?: WatchdogPane[] | undefined
 }
-
-const registryPath = process.argv[2]
-const pollIntervalMs = 1_000
 
 if (!registryPath)
   process.exit(1)
@@ -29,8 +42,9 @@ function linuxProcessStartTime(pid: number): string | null {
     const fieldsAfterCommand = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)
     return fieldsAfterCommand[19] || null
   }
-  catch {
+  catch (error) {
     // Missing /proc data is expected when the owner has exited or on non-Linux systems.
+    writeWatchdogDebug('linuxProcessStartTime failed', error)
     return null
   }
 }
@@ -41,8 +55,9 @@ function readRegistry(): WatchdogRegistry | null {
       return null
     return JSON.parse(readFileSync(registryPath!, 'utf8')) as WatchdogRegistry
   }
-  catch {
+  catch (error) {
     // A missing or corrupt registry cannot be used safely; let the watchdog exit.
+    writeWatchdogDebug('readRegistry failed', error)
     return null
   }
 }
@@ -51,8 +66,9 @@ function ownerAlive(registry: WatchdogRegistry): boolean {
   try {
     process.kill(registry.ownerPid, 0)
   }
-  catch {
+  catch (error) {
     // process.kill(pid, 0) throws when the owner is gone or inaccessible.
+    writeWatchdogDebug('ownerAlive kill check failed', error)
     return false
   }
 
@@ -90,7 +106,8 @@ function writeFatalError(error: unknown): void {
   try {
     appendFileSync(`${registryPath}.log`, `${new Date().toISOString()} ${error instanceof Error ? error.stack || error.message : String(error)}\n`)
   }
-  catch {
+  catch (loggingError) {
+    void loggingError
     // The watchdog has no stderr; if file logging also fails, exiting is the only safe fallback.
   }
 }
