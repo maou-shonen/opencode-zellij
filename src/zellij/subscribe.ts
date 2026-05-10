@@ -130,15 +130,6 @@ export class SubscriberManager {
 
     if (!existing) {
       this.subscribers.set(session.id, state)
-      try {
-        state.buffer.appendSnapshot(await zellijCli.dumpScreen(session.paneId))
-        this.sessions.updateLineCount(session.id, state.buffer.lineCount)
-      }
-      catch {
-        // dump-screen may race with pane creation; subscribe will still collect future output.
-      }
-      if (this.subscribers.get(session.id) !== state)
-        return
     }
 
     const child = spawn('zellij', zellijCommandArgs(['subscribe', '--pane-id', session.paneId, '--scrollback', '--format', 'json', '--ansi']), {
@@ -160,6 +151,19 @@ export class SubscriberManager {
     child.stderr.on('data', (chunk: string) => this.handleStderr(session.id, child, chunk))
     child.on('exit', () => this.handleSubscriberExit(session.id, child))
     child.on('error', error => this.handleSubscriberError(session.id, child, error))
+
+    if (!existing) {
+      try {
+        const snapshot = await zellijCli.dumpScreen(session.paneId)
+        if (this.subscribers.get(session.id) !== state || state.child !== child)
+          return
+        state.buffer.appendSnapshot(snapshot)
+        this.sessions.updateLineCount(session.id, state.buffer.lineCount)
+      }
+      catch {
+        // dump-screen may race with pane creation; subscribe will still collect future output.
+      }
+    }
   }
 
   read(sessionId: string, input: ReadLinesInput): ReadLinesResult {
