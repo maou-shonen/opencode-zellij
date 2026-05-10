@@ -26,6 +26,7 @@ export interface WatchdogRegistry {
 
 const instanceId = randomUUID()
 let watchdogStarted = false
+let watchdogChild: ReturnType<typeof spawn> | null = null
 
 function registryDirectory(): string {
   const base = process.env.XDG_RUNTIME_DIR || tmpdir()
@@ -89,16 +90,30 @@ function writeRegistry(registry: WatchdogRegistry): void {
 }
 
 function ensureWatchdog(): void {
-  if (watchdogStarted)
+  if (watchdogStarted && watchdogChild)
     return
   watchdogStarted = true
 
-  const child = spawn('node', [watchdogRunnerPath(), watchdogRegistryPath()], {
+  const child = spawn(process.execPath, [watchdogRunnerPath(), watchdogRegistryPath()], {
     detached: true,
     stdio: 'ignore',
     env: process.env,
   })
+  watchdogChild = child
   child.unref()
+  child.on('error', () => {
+    // Child failed early or was killed; allow watchdog to be restarted on next pane registration.
+    watchdogStarted = false
+    if (watchdogChild === child)
+      watchdogChild = null
+  })
+  child.on('exit', () => {
+    watchdogStarted = false
+    if (watchdogChild === child)
+      watchdogChild = null
+    if (existsSync(watchdogRegistryPath()))
+      ensureWatchdog()
+  })
 }
 
 function watchdogRunnerPath(): string {
@@ -198,4 +213,6 @@ export function removeWatchdogRegistry(): void {
   catch {
     // Watchdog registry cleanup is best effort.
   }
+  if (!watchdogChild)
+    watchdogStarted = false
 }
