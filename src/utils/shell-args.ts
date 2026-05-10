@@ -29,9 +29,3 @@ export function buildCommandArgv(input: CommandInput, options: BuildCommandArgvO
 
   return ['bash', '-lc', command]
 }
-
-export function commandLineForPolicy(input: CommandInput): string {
-  if (!input.args || input.args.length === 0)
-    return input.command.trim()
-  return [input.command, ...input.args].join(' ').trim()
-}

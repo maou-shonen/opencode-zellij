@@ -4,7 +4,7 @@ import type { OpenCodeEventLike } from './zellij/tab-title-events.js'
 import process from 'node:process'
 import { checkAndUpdate } from './auto-update.js'
 import { loadConfig } from './config.js'
-import { configurePolicy } from './permissions/policy.js'
+import { configureSudoPane } from './permissions/sudo-pane.js'
 import { sessionManager } from './pty/manager.js'
 import { zellijPtyKillTool } from './tools/kill.js'
 import { zellijPtyListTool } from './tools/list.js'
@@ -97,7 +97,7 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
     for (const warning of warnings) {
       debug(warning)
     }
-    configurePolicy({ allowSudoPane: config.pty.sudoPane === 'allow' })
+    configureSudoPane(config.pty.sudoPane === 'allow')
     cleanupStaleWatchdogRegistries()
     registerShutdownCleanup()
 

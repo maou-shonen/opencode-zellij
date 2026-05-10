@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { assertCommandAllowed, configurePolicy } from './permissions/policy.js'
 import { defaultConfig, loadConfig } from './config.js'
 
 describe('plugin config', () => {
@@ -21,7 +20,6 @@ describe('plugin config', () => {
     else
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome
     await rm(tempRoot, { force: true, recursive: true })
-    configurePolicy(undefined)
   })
 
   async function writeConfig(directory: string, basename: string, content: string): Promise<string> {
@@ -175,13 +173,4 @@ describe('plugin config', () => {
     expect(result.config.tabTitle.emojiIdle).toBe('D')
   })
 
-  it('resets legacy policy when reconfigured without deny and allow rules', () => {
-    configurePolicy({ denyCommands: ['git push *'], allowCommands: ['git *'] })
-    expect(() => assertCommandAllowed({ command: 'git push origin main' })).toThrow(/configured deny rule/)
-
-    configurePolicy({ allowSudoPane: true })
-
-    expect(() => assertCommandAllowed({ command: 'python server.py' })).not.toThrow()
-    expect(() => assertCommandAllowed({ command: 'git push origin main' })).not.toThrow()
-  })
 })

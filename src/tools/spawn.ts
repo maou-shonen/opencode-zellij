@@ -1,6 +1,5 @@
 import type { Probe } from '../pty/probe.js'
 import { tool } from '@opencode-ai/plugin'
-import { assertCommandAllowed } from '../permissions/policy.js'
 import { sessionManager } from '../pty/manager.js'
 import { runProbe } from '../pty/probe.js'
 import { createExitCodeToken } from '../utils/exit-code.js'
@@ -45,7 +44,6 @@ export const zellijPtySpawnTool = tool({
   async execute(args, context) {
     const cwd = args.cwd ?? context.directory
     const exitCodeToken = createExitCodeToken()
-    assertCommandAllowed({ command: args.command, args: args.args, humanInputOnly: false })
     const grepError = args.probe?.type === 'output' ? validateGrep(args.probe.grep) : null
     if (grepError)
       throw new Error(`Invalid probe.grep regex: ${grepError}`)

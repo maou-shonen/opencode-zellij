@@ -6,9 +6,6 @@ describe('zellij_pty_spawn', () => {
     await expect(zellijPtySpawnTool.execute({ command: 'bash', probe: { type: 'output', grep: '[' } }, testContext())).rejects.toThrow(/Invalid probe\.grep regex/)
   })
 
-  it('rejects sudo commands before creating a pane', async () => {
-    await expect(zellijPtySpawnTool.execute({ command: 'sudo apt update' }, testContext())).rejects.toThrow(/zellij_pty_request_sudo/)
-  })
 })
 
 function testContext(): Parameters<typeof zellijPtySpawnTool.execute>[1] {

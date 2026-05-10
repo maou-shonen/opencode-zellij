@@ -1,5 +1,5 @@
 import { tool } from '@opencode-ai/plugin'
-import { assertCommandAllowed } from '../permissions/policy.js'
+import { assertSudoPaneAllowed } from '../permissions/sudo-pane.js'
 import { sessionManager } from '../pty/manager.js'
 import { createExitCodeToken } from '../utils/exit-code.js'
 import { createOpenCodePaneTitle } from '../utils/pane-title.js'
@@ -66,9 +66,7 @@ export const requestSudoTool = tool({
   async execute(args, context) {
     const cwd = context.directory
     const exitCodeToken = createExitCodeToken()
-    for (const script of args.scripts) {
-      assertCommandAllowed({ command: script.command, humanInputOnly: true })
-    }
+    assertSudoPaneAllowed()
 
     const command = buildReviewScript(args.summary, args.scripts)
     const title = createOpenCodePaneTitle('zellij_pty_request_sudo')
