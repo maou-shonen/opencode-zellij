@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { tool } from '@opencode-ai/plugin'
 import { sessionManager } from '../pty/manager.js'
 import { assertWriteSizeAllowed, chunkWriteData } from '../pty/write-data.js'
+import { errorMessage } from '../utils/errors.js'
 import { zellijCli } from '../zellij/cli.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, nextAdvice, publicSession } from './format.js'
@@ -41,7 +42,7 @@ export const zellijPtyWriteTool = tool({
     session.updatedAt = new Date().toISOString()
     if (args.interruptAfterSeconds) {
       await delay(args.interruptAfterSeconds * 1_000)
-      if (sessionManager.get(session.id).status === 'running') {
+      if (sessionManager.find(session.id)?.status === 'running') {
         await zellijCli.sendCtrlC(session.paneId)
         await delay(500)
       }
@@ -50,11 +51,20 @@ export const zellijPtyWriteTool = tool({
       await delay(1_000)
     }
 
+    const warnings: string[] = []
+    let output = emptyOutputSnapshot(session.lineCount)
+    try {
+      output = readOutputSnapshot(session.id, { maxLines: args.maxLines })
+    }
+    catch (error) {
+      warnings.push(`Session output was unavailable before the write response completed: ${errorMessage(error)}`)
+    }
+
     return jsonResponse({
       session: publicSession(session),
-      output: readOutputSnapshot(session.id, { maxLines: args.maxLines }),
+      output,
       next: nextAdvice(true, args.interruptAfterSeconds ? 'Input was sent; Ctrl-C was sent after the requested interrupt timeout if the session was still running.' : 'Input was sent and recent output was observed.'),
-      warnings: [],
+      warnings,
     })
   },
 })

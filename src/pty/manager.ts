@@ -35,6 +35,10 @@ export class SessionManager {
     return session
   }
 
+  find(id: string): PtySession | undefined {
+    return this.sessions.get(id)
+  }
+
   list(): PtySession[] {
     return Array.from(this.sessions.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }

@@ -1,4 +1,5 @@
 import { sessionManager } from '../pty/manager.js'
+import { errorMessage } from '../utils/errors.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 
 export interface OutputSnapshot {
@@ -27,7 +28,7 @@ export function validateGrep(grep: string | undefined): string | null {
     return null
   }
   catch (error) {
-    return error instanceof Error ? error.message : String(error)
+    return errorMessage(error)
   }
 }
 

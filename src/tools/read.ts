@@ -26,15 +26,16 @@ export const zellijPtyReadTool = tool({
       })
     }
 
-    if (!subscriberManager.has(session.id)) {
+    const subscriberStatus = subscriberManager.status(session.id)
+    if (!subscriberStatus.hasBuffer || (!subscriberStatus.active && (session.status === 'running' || session.status === 'unknown'))) {
       await subscriberManager.start(session)
     }
-    const subscriberStatus = subscriberManager.status(session.id)
+    const statusAfterStart = subscriberManager.status(session.id)
     const warnings: string[] = []
     if (session.humanInputOnly) {
       warnings.push('This pane is human-input-only: agent writes are forbidden, but rendered output is visible to the agent.')
     }
-    if (!subscriberStatus.active) {
+    if (!statusAfterStart.active) {
       warnings.push('Subscriber is inactive; returned output may be stale.')
       if (session.status === 'running') {
         sessionManager.updateStatus(session.id, 'unknown')
@@ -47,8 +48,8 @@ export const zellijPtyReadTool = tool({
       session: publicSession(session),
       output,
       next: nextAdvice(session.status !== 'exited' && session.status !== 'killed', nextReadReason(session.status)),
-      subscriberActive: subscriberStatus.active,
-      subscriberLastExitedAt: subscriberStatus.lastExitedAt,
+      subscriberActive: statusAfterStart.active,
+      subscriberLastExitedAt: statusAfterStart.lastExitedAt,
       subscriberErrors: subscriberManager.stderr(session.id),
       warnings,
     })
