@@ -84,6 +84,8 @@ function extractRenderedLines(event: JsonObject): string[] {
 
 export class SubscriberManager {
   private readonly subscribers = new Map<string, SubscriberState>()
+  // Per-session start promises to prevent concurrent spawn races
+  private readonly startingSessions = new Map<string, Promise<void>>()
 
   constructor(
     private readonly sessions: SessionManager,
@@ -94,7 +96,26 @@ export class SubscriberManager {
     const existing = this.subscribers.get(session.id)
     if (existing?.child)
       return
+
+    // Prevent concurrent start races for the same session
+    const inProgress = this.startingSessions.get(session.id)
+    if (inProgress)
+      return inProgress
+
     ensureZellijTarget()
+
+    const startPromise = this.doStart(session)
+    this.startingSessions.set(session.id, startPromise)
+    try {
+      await startPromise
+    }
+    finally {
+      this.startingSessions.delete(session.id)
+    }
+  }
+
+  private async doStart(session: PtySession): Promise<void> {
+    const existing = this.subscribers.get(session.id)
 
     const state: SubscriberState
       = existing
@@ -108,6 +129,7 @@ export class SubscriberManager {
         }
 
     if (!existing) {
+      this.subscribers.set(session.id, state)
       try {
         state.buffer.appendSnapshot(await zellijCli.dumpScreen(session.paneId))
         this.sessions.updateLineCount(session.id, state.buffer.lineCount)
@@ -115,22 +137,29 @@ export class SubscriberManager {
       catch {
         // dump-screen may race with pane creation; subscribe will still collect future output.
       }
-      this.subscribers.set(session.id, state)
+      if (this.subscribers.get(session.id) !== state)
+        return
     }
 
     const child = spawn('zellij', zellijCommandArgs(['subscribe', '--pane-id', session.paneId, '--scrollback', '--format', 'json', '--ansi']), {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     child.stdin.end()
+    // Only assign child if state is still the same (no concurrent restart)
+    const currentState = this.subscribers.get(session.id)
+    if (currentState !== state) {
+      child.kill('SIGTERM')
+      return
+    }
     state.child = child
     state.lastExitedAt = null
 
     child.stdout.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => this.handleStdout(session.id, chunk))
+    child.stdout.on('data', (chunk: string) => this.handleStdout(session.id, child, chunk))
     child.stderr.setEncoding('utf8')
-    child.stderr.on('data', (chunk: string) => this.handleStderr(session.id, chunk))
-    child.on('exit', () => this.handleSubscriberExit(session.id))
-    child.on('error', error => this.handleSubscriberError(session.id, error))
+    child.stderr.on('data', (chunk: string) => this.handleStderr(session.id, child, chunk))
+    child.on('exit', () => this.handleSubscriberExit(session.id, child))
+    child.on('error', error => this.handleSubscriberError(session.id, child, error))
   }
 
   read(sessionId: string, input: ReadLinesInput): ReadLinesResult {
@@ -188,21 +217,21 @@ export class SubscriberManager {
     }
   }
 
-  private handleStdout(sessionId: string, chunk: string): void {
+  private handleStdout(sessionId: string, child: ChildProcessWithoutNullStreams, chunk: string): void {
     const state = this.subscribers.get(sessionId)
-    if (!state)
+    if (!state || state.child !== child)
       return
 
     const parts = `${state.stdoutRemainder}${chunk}`.split('\n')
     state.stdoutRemainder = parts.pop() ?? ''
     for (const part of parts) {
-      this.handleJsonLine(sessionId, part)
+      this.handleJsonLine(sessionId, child, part)
     }
   }
 
-  private handleJsonLine(sessionId: string, line: string): void {
+  private handleJsonLine(sessionId: string, child: ChildProcessWithoutNullStreams, line: string): void {
     const state = this.subscribers.get(sessionId)
-    if (!state)
+    if (!state || state.child !== child)
       return
     const trimmed = line.trim()
     if (!trimmed)
@@ -221,7 +250,14 @@ export class SubscriberManager {
       return
     }
 
-    const session = this.sessions.get(sessionId)
+    let session: PtySession
+    try {
+      session = this.sessions.get(sessionId)
+    }
+    catch {
+      this.forget(sessionId)
+      return
+    }
     const paneId = eventPaneId(event)
     if (paneId && paneId !== session.paneId)
       return
@@ -258,9 +294,9 @@ export class SubscriberManager {
     }
   }
 
-  private handleStderr(sessionId: string, chunk: string): void {
+  private handleStderr(sessionId: string, child: ChildProcessWithoutNullStreams, chunk: string): void {
     const state = this.subscribers.get(sessionId)
-    if (!state)
+    if (!state || state.child !== child)
       return
     state.stderr.push(...splitLines(chunk))
     if (state.stderr.length > maxStderrLines) {
@@ -268,9 +304,11 @@ export class SubscriberManager {
     }
   }
 
-  private handleSubscriberExit(sessionId: string): void {
+  private handleSubscriberExit(sessionId: string, child: ChildProcessWithoutNullStreams): void {
     const state = this.subscribers.get(sessionId)
     if (!state)
+      return
+    if (state.child !== child)
       return
     state.child = null
     state.lastExitedAt = new Date().toISOString()
@@ -280,11 +318,14 @@ export class SubscriberManager {
     }
   }
 
-  private handleSubscriberError(sessionId: string, error: Error): void {
+  private handleSubscriberError(sessionId: string, child: ChildProcessWithoutNullStreams, error: Error): void {
     const state = this.subscribers.get(sessionId)
-    if (state)
+    if (state?.child === child) {
       state.stderr.push(error.message)
-    this.sessions.updateStatus(sessionId, 'unknown')
+      state.child = null
+      state.lastExitedAt = new Date().toISOString()
+      this.sessions.updateStatus(sessionId, 'unknown')
+    }
   }
 }
 
