@@ -13,6 +13,7 @@ import { requestSudoTool } from './tools/request-sudo.js'
 import { zellijPtySpawnTool } from './tools/spawn.js'
 import { zellijPtyWriteTool } from './tools/write.js'
 import { debug } from './utils/debug.js'
+import { errorMessage } from './utils/errors.js'
 import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './zellij/pane-watchdog.js'
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
@@ -81,9 +82,25 @@ export function startAutoUpdateCheck(
       showUpdateToast(client, await check({ importMetaUrl }))
     }
     catch (cause) {
-      debug('auto-update check failed', cause instanceof Error ? cause.message : String(cause))
+      debug('auto-update check failed', errorMessage(cause))
     }
   })()
+}
+
+async function cleanupStep(stepName: string, sessionId: string, step: () => void | Promise<void>): Promise<void> {
+  try {
+    await step()
+  }
+  catch (error) {
+    debug(`session.deleted cleanup failed: ${stepName} for ${sessionId}`, errorMessage(error))
+  }
+}
+
+async function cleanupDeletedSession(sessionId: string): Promise<void> {
+  await cleanupStep('close pane', sessionId, () => subscriberManager.closeSessionPane(sessionId))
+  await cleanupStep('forget subscriber', sessionId, () => subscriberManager.forget(sessionId))
+  await cleanupStep('unregister watchdog', sessionId, () => unregisterPaneFromWatchdog(sessionId))
+  await cleanupStep('remove session', sessionId, () => sessionManager.remove(sessionId))
 }
 
 export interface ZellijPtyPluginDependencies {
@@ -139,14 +156,7 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
             return
 
           const sessions = sessionManager.listByOpenCodeSession(sessionID)
-          await Promise.all(
-            sessions.map(async (session) => {
-              await subscriberManager.closeSessionPane(session.id)
-              subscriberManager.forget(session.id)
-              unregisterPaneFromWatchdog(session.id)
-              sessionManager.remove(session.id)
-            }),
-          )
+          await Promise.all(sessions.map(session => cleanupDeletedSession(session.id)))
         }
       },
       tool: config.pty.enabled
