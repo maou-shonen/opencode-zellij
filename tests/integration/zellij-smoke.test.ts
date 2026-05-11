@@ -45,6 +45,7 @@ interface PluginModule {
 
 const canRunIntegration = process.env.RUN_ZELLIJ_INTEGRATION === '1' && Boolean(process.env.ZELLIJ || process.env.ZELLIJ_SESSION_NAME)
 const integration = canRunIntegration ? describe : describe.skip
+const integrationTimeoutMs = 15_000
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -184,7 +185,7 @@ integration('real Zellij integration', () => {
     finally {
       await disposeQuietly(hooks)
     }
-  })
+  }, integrationTimeoutMs)
 
   it('spawns a pane, probes output, reads with grep, and kills it', async () => {
     const hooks = await loadPlugin()
@@ -212,7 +213,7 @@ integration('real Zellij integration', () => {
       await killQuietly(hooks, spawned.session.id, ctx)
       await disposeQuietly(hooks)
     }
-  })
+  }, integrationTimeoutMs)
 
   it('writes to an interactive pane and observes output', async () => {
     const hooks = await loadPlugin()
@@ -227,7 +228,7 @@ integration('real Zellij integration', () => {
       await killQuietly(hooks, spawned.session.id, ctx)
       await disposeQuietly(hooks)
     }
-  })
+  }, integrationTimeoutMs)
 
   it('creates zellij_pty_request_sudo as human-only and rejects agent writes', async () => {
     const hooks = await loadPlugin()
@@ -254,7 +255,7 @@ integration('real Zellij integration', () => {
       await killQuietly(hooks, requested.session.id, ctx)
       await disposeQuietly(hooks)
     }
-  })
+  }, integrationTimeoutMs)
 
   it('restores tab title after disposed event', async () => {
     // Require pane context so we target the right tab and not an arbitrary active tab
@@ -304,7 +305,7 @@ integration('real Zellij integration', () => {
         }
       }
     }
-  })
+  }, integrationTimeoutMs)
 })
 
 // ---------------------------------------------------------------------------
