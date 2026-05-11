@@ -59,6 +59,9 @@ describe('TabTitleManager', () => {
       async renameTab(title: string) {
         currentCalls.push(title)
       },
+      async currentTabTitle() {
+        return undefined
+      },
     }
   })
 
@@ -190,6 +193,9 @@ describe('TabTitleManager', () => {
         async renameTab(_title: string) {
           throw new Error('zellij not found')
         },
+        async currentTabTitle() {
+          return undefined
+        },
       }
       const manager = new TabTitleManager({ projectName: 'my-project', cli: failingCli, retryInitialMs: 1 })
       await expect(manager.renderImmediate()).resolves.toBeUndefined()
@@ -207,6 +213,9 @@ describe('TabTitleManager', () => {
             shouldFail = false
             throw new Error('temporary zellij failure')
           }
+        },
+        async currentTabTitle() {
+          return undefined
         },
       }
       const manager = new TabTitleManager({ projectName: 'my-project', cli: retryingCli, retryInitialMs: 5 })
@@ -229,6 +238,9 @@ describe('TabTitleManager', () => {
             throw new Error('temporary zellij failure')
           }
         },
+        async currentTabTitle() {
+          return undefined
+        },
       }
       const manager = new TabTitleManager({ projectName: 'my-project', cli: retryingCli, debounceMs: 1, retryInitialMs: 50 })
 
@@ -247,6 +259,9 @@ describe('TabTitleManager', () => {
         async renameTab(title: string) {
           calls.push(title)
           throw new Error('temporary zellij failure')
+        },
+        async currentTabTitle() {
+          return undefined
         },
       }
       const manager = new TabTitleManager({ projectName: 'my-project', cli: failingCli, retryInitialMs: 5 })
@@ -306,7 +321,7 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('serializes in-flight title syncs and only applies the latest desired title next', async () => {
+  it('uses the latest desired title after capturing the original title', async () => {
     await withZellijEnv('1', async () => {
       let resolveFirstRename: (() => void) | undefined
       const blockingCli: TabTitleCli = {
@@ -318,6 +333,9 @@ describe('TabTitleManager', () => {
             })
           }
         },
+        async currentTabTitle() {
+          return undefined
+        },
       }
       const manager = new TabTitleManager({ projectName: 'my-project', cli: blockingCli, debounceMs: 10 })
 
@@ -326,10 +344,10 @@ describe('TabTitleManager', () => {
       manager.updateSessionStatus('s1', { type: 'busy' })
       await new Promise(r => setTimeout(r, 30))
 
-      expect(calls).toEqual(['🟢 my-project'])
+      expect(calls).toEqual(['⚡ my-project 🌱 main'])
       resolveFirstRename?.()
       await firstSync
-      expect(calls).toEqual(['🟢 my-project', '⚡ my-project 🌱 main'])
+      expect(calls).toEqual(['⚡ my-project 🌱 main'])
     })
   })
 
@@ -345,6 +363,9 @@ describe('TabTitleManager', () => {
             })
           }
         },
+        async currentTabTitle() {
+          return undefined
+        },
       }
       const manager = new TabTitleManager({ projectName: 'my-project', cli: blockingCli, debounceMs: 1, retryInitialMs: 5 })
 
@@ -352,13 +373,13 @@ describe('TabTitleManager', () => {
       manager.setBranch('main')
       manager.updateSessionStatus('s1', { type: 'busy' })
       await new Promise(r => setTimeout(r, 10))
-      expect(calls).toEqual(['🟢 my-project'])
+      expect(calls).toEqual(['⚡ my-project 🌱 main'])
 
       rejectFirstRename?.(new Error('temporary zellij failure'))
       await firstSync
       await new Promise(r => setTimeout(r, 30))
 
-      expect(calls).toEqual(['🟢 my-project', '⚡ my-project 🌱 main'])
+      expect(calls).toEqual(['⚡ my-project 🌱 main', '⚡ my-project 🌱 main'])
       manager.destroy()
     })
   })
@@ -369,6 +390,139 @@ describe('TabTitleManager', () => {
       manager.updateSessionStatus('s1', { type: 'retry', attempt: 1, message: 'a', next: 0 })
       manager.updateSessionStatus('s1', { type: 'retry', attempt: 2, message: 'b', next: 0 })
       expect(manager.getCurrentTitle()).toBe('⚡ my-project')
+    })
+  })
+
+  it('saves original tab title on first render', async () => {
+    const calls: string[] = []
+    await withZellijEnv('1', async () => {
+      const titleCapturingCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+        },
+        async currentTabTitle() {
+          return 'my-original-tab'
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: titleCapturingCli })
+      await manager.renderImmediate()
+      await manager.destroy()
+      expect(calls).toEqual(['🟢 my-project', 'my-original-tab'])
+    })
+  })
+
+  it('restores original tab title on destroy', async () => {
+    let restoreTitle: string | undefined
+    await withZellijEnv('1', async () => {
+      const restoringCli = {
+        async renameTab(title: string) {
+          restoreTitle = title
+        },
+        async currentTabTitle() {
+          return 'original-name'
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: restoringCli })
+      await manager.renderImmediate()
+      await manager.destroy()
+      expect(restoreTitle).toBe('original-name')
+    })
+  })
+
+  it('destroy is idempotent', async () => {
+    const calls: string[] = []
+    await withZellijEnv('1', async () => {
+      const idempotentCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+        },
+        async currentTabTitle() {
+          return 'original-name'
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: idempotentCli })
+      await manager.renderImmediate()
+      await manager.destroy()
+      await manager.destroy()
+      expect(calls).toEqual(['🟢 my-project', 'original-name'])
+    })
+  })
+
+  it('destroy is no-op when ZELLIJ is absent', async () => {
+    let renameCount = 0
+    await withZellijEnv(undefined, async () => {
+      const cli = {
+        async renameTab(_title: string) {
+          renameCount++
+        },
+        async currentTabTitle() {
+          return 'original-name'
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli })
+      manager.destroy()
+      expect(renameCount).toBe(0)
+    })
+  })
+
+  it('captures original title before the first dynamic rename', async () => {
+    await withZellijEnv('1', async () => {
+      const calls: string[] = []
+      let resolveCurrentTabTitle: ((title: string) => void) | undefined
+      const slowCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+        },
+        async currentTabTitle() {
+          return new Promise<string>(resolve => {
+            resolveCurrentTabTitle = resolve
+          })
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: slowCli })
+      const renderPromise = manager.renderImmediate()
+      await new Promise(r => setTimeout(r, 10))
+      expect(calls).toEqual([])
+      resolveCurrentTabTitle!('slow-original')
+      await renderPromise
+      await manager.destroy()
+      expect(calls).toEqual(['🟢 my-project', 'slow-original'])
+    })
+  })
+
+  it('restores original title after an in-flight dynamic rename finishes', async () => {
+    await withZellijEnv('1', async () => {
+      const calls: string[] = []
+      let resolveDynamicRename: (() => void) | undefined
+      const blockingCli: TabTitleCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+          if (title === '🟢 my-project') {
+            await new Promise<void>((resolve) => {
+              resolveDynamicRename = resolve
+            })
+          }
+        },
+        async currentTabTitle() {
+          return 'original-name'
+        },
+      }
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: blockingCli })
+
+      const renderPromise = manager.renderImmediate()
+      await new Promise(r => setTimeout(r, 10))
+      expect(calls).toEqual(['🟢 my-project'])
+
+      const destroyPromise = manager.destroy()
+      const secondDestroyPromise = manager.destroy()
+      await new Promise(r => setTimeout(r, 10))
+      expect(calls).toEqual(['🟢 my-project'])
+
+      resolveDynamicRename?.()
+      await renderPromise
+      await destroyPromise
+      await secondDestroyPromise
+      expect(calls).toEqual(['🟢 my-project', 'original-name'])
     })
   })
 })

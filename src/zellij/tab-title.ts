@@ -6,6 +6,7 @@ import { ZellijCli } from './cli.js'
 
 export interface TabTitleCli {
   renameTab: (title: string) => Promise<void>
+  currentTabTitle: () => Promise<string | undefined>
 }
 
 export type TabTitleStatus = 'idle' | 'running' | 'needs-input'
@@ -73,6 +74,7 @@ export class TabTitleManager {
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private retryAttempt = 0
   private syncInFlight = false
+  private syncPromise: Promise<void> | undefined
   private readonly debounceMs: number
   private readonly retryInitialMs: number
   private readonly retryMaxMs: number
@@ -81,6 +83,10 @@ export class TabTitleManager {
   private readonly emojis: TabTitleEmojis
   private readonly enabled: boolean
   private destroyed = false
+  private originalTabTitle: string | undefined
+  private originalTabTitleLoaded = false
+  private originalTabTitlePromise: Promise<void> | undefined
+  private destroyPromise: Promise<void> | undefined
 
   constructor(options: TabTitleManagerOptions) {
     this.projectName = options.projectName
@@ -179,6 +185,9 @@ export class TabTitleManager {
   async renderImmediate(): Promise<void> {
     if (!this.enabled || this.destroyed)
       return
+    await this.ensureOriginalTabTitle()
+    if (this.destroyed)
+      return
     this.desiredTitle = this.buildTitle()
     this.clearDebounceTimer()
     await this.syncDesiredTitle()
@@ -208,10 +217,18 @@ export class TabTitleManager {
   private async syncDesiredTitle(): Promise<void> {
     if (!this.enabled || this.destroyed)
       return
-    if (this.syncInFlight)
+    await this.ensureOriginalTabTitle()
+    if (this.destroyed)
       return
+    if (this.syncInFlight)
+      return this.syncPromise
 
     this.syncInFlight = true
+    this.syncPromise = this.runTitleSync()
+    return this.syncPromise
+  }
+
+  private async runTitleSync(): Promise<void> {
     try {
       while (this.desiredTitle && this.desiredTitle !== this.lastSyncedTitle) {
         const title = this.desiredTitle
@@ -230,6 +247,7 @@ export class TabTitleManager {
     }
     finally {
       this.syncInFlight = false
+      this.syncPromise = undefined
     }
   }
 
@@ -264,9 +282,53 @@ export class TabTitleManager {
     this.debounceTimer = undefined
   }
 
-  destroy(): void {
+  private async ensureOriginalTabTitle(): Promise<void> {
+    if (!this.enabled || this.originalTabTitleLoaded)
+      return
+    if (this.originalTabTitlePromise)
+      return this.originalTabTitlePromise
+
+    this.originalTabTitlePromise = this.saveOriginalTabTitle()
+    return this.originalTabTitlePromise
+  }
+
+  private async saveOriginalTabTitle(): Promise<void> {
+    try {
+      const title = await this.cli.currentTabTitle()
+      if (title !== undefined)
+        this.originalTabTitle = title
+    }
+    catch (error) {
+      debug('TabTitleManager failed to save original tab title', errorMessage(error))
+    }
+    finally {
+      this.originalTabTitleLoaded = true
+      this.originalTabTitlePromise = undefined
+    }
+  }
+
+  destroy(): Promise<void> {
+    if (this.destroyed)
+      return this.destroyPromise ?? Promise.resolve()
     this.destroyed = true
     this.clearDebounceTimer()
     this.clearRetryTimer()
+
+    if (!this.enabled)
+      return Promise.resolve()
+
+    this.destroyPromise = this.restoreOriginalTabTitle()
+      .catch(error => debug('TabTitleManager failed to restore original tab title', errorMessage(error)))
+    return this.destroyPromise
+  }
+
+  private async restoreOriginalTabTitle(): Promise<void> {
+    await this.originalTabTitlePromise
+    await this.syncPromise
+    const originalTitle = this.originalTabTitle
+    this.originalTabTitle = undefined
+    if (originalTitle === undefined)
+      return
+    await this.cli.renameTab(originalTitle)
   }
 }

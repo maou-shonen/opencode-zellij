@@ -151,7 +151,7 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
         const event: OpenCodeEventLike = input.event
 
         if (tabTitleManager)
-          handleTabTitleEvent(tabTitleManager, event)
+          await handleTabTitleEvent(tabTitleManager, event)
 
         if (event.type === 'session.deleted') {
           const sessionID = deletedSessionID(event)

@@ -18,7 +18,7 @@ export interface TabTitleEventManager {
   markNeedsInput: (id: string, sessionID: string) => void
   clearNeedsInput: (id: string) => void
   setBranch: (branch: string | undefined) => void
-  destroy?: () => void
+  destroy?: () => void | Promise<void>
 }
 
 export type BranchReader = (worktree: string) => Promise<string>
@@ -100,7 +100,10 @@ export function shouldReadInitialBranch(zellij: string | undefined): boolean {
   return Boolean(zellij)
 }
 
-export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event: OpenCodeEventLike): void {
+export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event: OpenCodeEventLike): void | Promise<void> {
+  if (event.type === 'server.instance.disposed' || event.type === 'global.disposed')
+    return tabTitleManager.destroy?.()
+
   if (!isRecord(event.properties))
     return
 
@@ -160,11 +163,6 @@ export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event
       const sessionID = deletedSessionID(event)
       if (sessionID)
         tabTitleManager.removeSession(sessionID)
-      break
-    }
-    case 'server.instance.disposed':
-    case 'global.disposed': {
-      tabTitleManager.destroy?.()
       break
     }
   }

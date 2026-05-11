@@ -125,6 +125,47 @@ describe('tab title event routing', () => {
     expect(route({ type: 'global.disposed', properties: {} })).toEqual(['destroy'])
   })
 
+  it('calls destroy on disposed events even when properties is null, a string, or missing/non-object', () => {
+    // properties = null
+    expect(route({ type: 'server.instance.disposed', properties: null })).toEqual(['destroy'])
+    // properties = string
+    expect(route({ type: 'global.disposed', properties: 'not-an-object' as unknown })).toEqual(['destroy'])
+    // properties = number
+    expect(route({ type: 'server.instance.disposed', properties: 42 as unknown })).toEqual(['destroy'])
+    // properties missing (undefined) - handled via object without properties key
+    const manager1 = new RecordingTabTitleManager()
+    handleTabTitleEvent(manager1, { type: 'server.instance.disposed' } as OpenCodeEventLike)
+    expect(manager1.calls).toEqual(['destroy'])
+    // properties = undefined
+    const manager2 = new RecordingTabTitleManager()
+    handleTabTitleEvent(manager2, { type: 'global.disposed', properties: undefined })
+    expect(manager2.calls).toEqual(['destroy'])
+  })
+
+  it('returns a promise from destroy on disposed events so caller can await', async () => {
+    const manager = new RecordingTabTitleManager()
+    let resolveOrder: string[] = []
+
+    manager.destroy = () => {
+      resolveOrder.push('destroy-start')
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolveOrder.push('destroy-end')
+          resolve()
+        }, 10)
+      })
+    }
+
+    const result = handleTabTitleEvent(manager, { type: 'server.instance.disposed', properties: {} })
+    expect(result).toBeInstanceOf(Promise)
+
+    resolveOrder.push('await-start')
+    await result
+    resolveOrder.push('await-end')
+
+    expect(resolveOrder).toEqual(['destroy-start', 'await-start', 'destroy-end', 'await-end'])
+  })
+
   it('does not mark pending input without a session id', () => {
     expect(route({ type: 'question.asked', properties: { id: 'q1' } })).toEqual([])
     expect(route({ type: 'permission.updated', properties: { id: 'p1' } })).toEqual([])

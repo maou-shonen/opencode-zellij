@@ -2,10 +2,9 @@ import type { CommandInput } from '../utils/shell-args.js'
 import { execFile, spawnSync } from 'node:child_process'
 import process from 'node:process'
 import { promisify } from 'node:util'
-import { debug } from '../utils/debug.js'
-import { errorMessage } from '../utils/errors.js'
 import { parsePaneId } from '../utils/ids.js'
 import { buildCommandArgv } from '../utils/shell-args.js'
+import { parseCurrentPaneTabId, parseTabName } from './parse.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -56,66 +55,6 @@ export function buildRenameTabActionArgs(title: string, options: { tabId?: numbe
   if (options.tabId !== undefined)
     return ['action', 'rename-tab', '--tab-id', String(options.tabId), title]
   return ['action', 'rename-tab', title]
-}
-
-function numericProperty(object: Record<string, unknown>, keys: string[]): number | undefined {
-  for (const key of keys) {
-    const value = object[key]
-    if (typeof value === 'number' && Number.isFinite(value))
-      return value
-    if (typeof value === 'string') {
-      const parsed = Number(value)
-      if (Number.isInteger(parsed))
-        return parsed
-    }
-  }
-  return undefined
-}
-
-function paneMatches(object: Record<string, unknown>, paneId: number): boolean {
-  const candidate = numericProperty(object, ['id', 'pane_id', 'paneId'])
-  return candidate === paneId && object.is_plugin !== true
-}
-
-function findPaneTabId(value: unknown, paneId: number): number | undefined {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findPaneTabId(item, paneId)
-      if (found !== undefined)
-        return found
-    }
-    return undefined
-  }
-
-  if (typeof value !== 'object' || value === null)
-    return undefined
-
-  const object = value as Record<string, unknown>
-  if (paneMatches(object, paneId))
-    return numericProperty(object, ['tab_id', 'tabId'])
-
-  for (const nested of Object.values(object)) {
-    const found = findPaneTabId(nested, paneId)
-    if (found !== undefined)
-      return found
-  }
-  return undefined
-}
-
-export function parseCurrentPaneTabId(listPanesJson: string, paneId: string | undefined): number | undefined {
-  if (!paneId)
-    return undefined
-  const parsedPaneId = Number(paneId)
-  if (!Number.isInteger(parsedPaneId))
-    return undefined
-
-  try {
-    return findPaneTabId(JSON.parse(listPanesJson), parsedPaneId)
-  }
-  catch (error) {
-    debug('parseCurrentPaneTabId failed', errorMessage(error))
-    return undefined
-  }
 }
 
 export function ensureZellijTarget(): void {
@@ -197,6 +136,18 @@ export class ZellijCli {
     if (tabId === undefined && process.env.ZELLIJ)
       throw new Error(`Could not resolve Zellij tab id for pane ${process.env.ZELLIJ_PANE_ID ?? '<missing>'}`)
     await runZellij(tabId === undefined ? buildRenameTabActionArgs(title) : buildRenameTabActionArgs(title, { tabId }))
+  }
+
+  async currentTabTitle(): Promise<string | undefined> {
+    const paneId = process.env.ZELLIJ_PANE_ID
+    if (!paneId)
+      return undefined
+
+    const tabId = await this.currentPaneTabId()
+    if (tabId === undefined)
+      return undefined
+    const result = await runZellij(zellijActionArgs('list-tabs', ['--json']), { timeoutMs: 5_000 })
+    return parseTabName(result.stdout, tabId)
   }
 }
 
