@@ -65,15 +65,9 @@
       "additionalProperties": false
     },
     "autoUpdate": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "description": "Enable automatic update checks for the opencode-zellij plugin.",
-          "type": "boolean",
-          "default": true
-        }
-      },
-      "additionalProperties": false
+      "description": "Enable automatic update checks for the opencode-zellij plugin.",
+      "type": "boolean",
+      "default": true
     }
   },
   "additionalProperties": false,

@@ -69,6 +69,24 @@ OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝，�
 
 `zellij_pty_request_sudo` 會開啟 review pane、顯示即將執行的內容，並等待使用者輸入 `YES`。Agent 不能在該 pane 中輸入，因此 passwords 與 credentials 會留在 Zellij，而不是進入 prompts 或 tool arguments。
 
+## 設定
+
+可選的 sidecar config 會從 `~/.config/opencode/opencode-zellij.config.jsonc` 以及目前 project 的 `.opencode/opencode-zellij.config.jsonc` 載入。Project config 會覆蓋 user config。
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/maou-shonen/opencode-zellij/main/opencode-zellij.schema.json",
+  "autoUpdate": true,
+  "pty": {
+    "enabled": true,
+    "sudoPane": "allow" // allow, deny, or hide
+  },
+  "tabTitle": { "enabled": true }
+}
+```
+
+將 `autoUpdate`、`pty.enabled` 或 `tabTitle.enabled` 設為 `false` 可關閉對應功能。
+
 ## 動態 tab title
 
 當 OpenCode 在 Zellij 中執行時，plugin 會更新目前 tab title，顯示 project、branch 與目前 OpenCode 狀態：

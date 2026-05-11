@@ -143,7 +143,7 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
 
     const client = input.client
 
-    if (config.autoUpdate.enabled)
+    if (config.autoUpdate)
       (dependencies.startAutoUpdateCheck ?? startAutoUpdateCheck)(client, dependencies.importMetaUrl ?? import.meta.url)
 
     return {

@@ -24,9 +24,7 @@ export interface PtyConfig {
 
 export type SudoPaneMode = z.infer<typeof sudoPaneSchema>
 
-export interface AutoUpdateConfig {
-  enabled: boolean
-}
+export type AutoUpdateConfig = boolean
 
 export interface ZellijPluginConfig {
   tabTitle: TabTitleConfig
@@ -67,9 +65,7 @@ const ptyLayerSchema = z.object({
   sudoPane: sudoPaneSchema.optional().describe('Controls whether the sudo pane tool is available, denied, or hidden.'),
 }).strict()
 
-const autoUpdateLayerSchema = z.object({
-  enabled: z.boolean().optional().describe('Enable automatic update checks for the opencode-zellij plugin.'),
-}).strict()
+const autoUpdateLayerSchema = z.boolean().optional().describe('Enable automatic update checks for the opencode-zellij plugin.')
 
 export const sidecarConfigSchema = z.object({
   $schema: z.string().optional().describe('JSON Schema URI for editor completion.'),
@@ -91,9 +87,7 @@ export const defaultConfig: ZellijPluginConfig = {
     enabled: true,
     sudoPane: 'allow',
   },
-  autoUpdate: {
-    enabled: true,
-  },
+  autoUpdate: true,
 }
 
 type ConfigLayer = Pick<z.infer<typeof sidecarConfigSchema>, 'tabTitle' | 'pty' | 'autoUpdate'>
@@ -124,9 +118,7 @@ function mergeConfig(user?: ConfigLayer | undefined, project?: ConfigLayer | und
       enabled: project?.pty?.enabled ?? user?.pty?.enabled ?? defaultConfig.pty.enabled,
       sudoPane: project?.pty?.sudoPane ?? user?.pty?.sudoPane ?? defaultConfig.pty.sudoPane,
     },
-    autoUpdate: {
-      enabled: project?.autoUpdate?.enabled ?? user?.autoUpdate?.enabled ?? defaultConfig.autoUpdate.enabled,
-    },
+    autoUpdate: project?.autoUpdate ?? user?.autoUpdate ?? defaultConfig.autoUpdate,
   }
 }
 

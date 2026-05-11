@@ -87,7 +87,7 @@ describe('ZellijPtyPlugin', () => {
 
   it('does not start auto-update when disabled by config', async () => {
     const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "autoUpdate": { "enabled": false } }')
+    await writeProjectConfig(project, '{ "autoUpdate": false }')
     const calls: string[] = []
     const pluginFactory = createZellijPtyPlugin({
       startAutoUpdateCheck: () => {

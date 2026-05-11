@@ -64,11 +64,11 @@ describe('plugin config', () => {
   })
 
   it('supports disabling auto update', async () => {
-    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', '{ "autoUpdate": { "enabled": false } }')
+    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', '{ "autoUpdate": false }')
 
     const result = await loadConfig({ directory: join(tempRoot, 'project') })
 
-    expect(result.config.autoUpdate.enabled).toBe(false)
+    expect(result.config.autoUpdate).toBe(false)
   })
 
   it('ignores pre-release legacy basename files', async () => {

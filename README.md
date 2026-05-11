@@ -69,6 +69,24 @@ Close the dev server pane.
 
 `zellij_pty_request_sudo` opens a review pane, shows what will run, and waits for the user to type `YES`. The agent cannot type into that pane, so passwords and credentials stay in Zellij instead of entering prompts or tool arguments.
 
+## Configuration
+
+Optional sidecar config files are loaded from `~/.config/opencode/opencode-zellij.config.jsonc` and from `.opencode/opencode-zellij.config.jsonc` in the current project. Project config overrides user config.
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/maou-shonen/opencode-zellij/main/opencode-zellij.schema.json",
+  "autoUpdate": true,
+  "pty": {
+    "enabled": true,
+    "sudoPane": "allow" // allow, deny, or hide
+  },
+  "tabTitle": { "enabled": true }
+}
+```
+
+Set `autoUpdate`, `pty.enabled`, or `tabTitle.enabled` to `false` to turn those features off.
+
 ## Dynamic tab title
 
 When OpenCode runs inside Zellij, the plugin updates the current tab title to show the project, branch, and current OpenCode state:
