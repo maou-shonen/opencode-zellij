@@ -51,7 +51,7 @@ describe('zellij_pty_list', () => {
 
     expect(result.sessions).toHaveLength(1)
     expect(result.sessions[0].id).toBe(current.id)
-    expect(result.sessions[0].subscriber).toEqual({ hasBuffer: false, active: false, lastExitedAt: null })
+    expect(result.sessions[0].subscriber).toEqual({ hasBuffer: false, active: false, lastExitedAt: null, terminal: false })
   })
 })
 

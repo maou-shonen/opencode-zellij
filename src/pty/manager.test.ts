@@ -72,9 +72,27 @@ describe('SessionManager', () => {
     })
 
     const updated = manager.markExited(session.id, 7)
-    expect(updated.status).toBe('exited')
+    expect(updated.status).toBe('terminal')
     expect(updated.exitCode).toBe(7)
     expect(updated.exitedAt).toBeTruthy()
+    expect(updated.tombstone?.reason).toBe('exit_marker')
+  })
+
+  it('keeps terminal sessions terminal even if status is updated later', () => {
+    const manager = new SessionManager()
+    const session = manager.create({
+      paneId: 'terminal_6',
+      title: 'terminal',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    manager.markExited(session.id, 0)
+    manager.updateStatus(session.id, 'running')
+
+    expect(manager.get(session.id).status).toBe('terminal')
   })
 
   it('removes sessions and rejects unknown ids', () => {

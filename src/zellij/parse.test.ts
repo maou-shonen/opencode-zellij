@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseCurrentPaneTabId, parseTabName } from './parse.js'
+import { parseCurrentPaneTabId, parsePaneExists, parseTabName } from './parse.js'
 
 describe('parseCurrentPaneTabId', () => {
   it('parses the current pane tab id from list-panes JSON', () => {
@@ -28,6 +28,27 @@ describe('parseCurrentPaneTabId', () => {
     expect(parseCurrentPaneTabId('not json', '42')).toBeUndefined()
     expect(parseCurrentPaneTabId(JSON.stringify([{ id: 7, tab_id: 1 }]), undefined)).toBeUndefined()
     expect(parseCurrentPaneTabId(JSON.stringify([{ id: 7, tab_id: 1 }]), 'terminal_7')).toBeUndefined()
+  })
+})
+
+describe('parsePaneExists', () => {
+  it('detects whether a pane exists in list-panes JSON', () => {
+    const output = JSON.stringify([
+      { id: 8, tab_id: 0, is_plugin: false },
+      { id: 42, tab_id: 9, is_plugin: false },
+    ])
+
+    expect(parsePaneExists(output, '42')).toBe(true)
+    expect(parsePaneExists(output, '7')).toBe(false)
+  })
+
+  it('ignores plugin panes and malformed JSON', () => {
+    expect(parsePaneExists(JSON.stringify([{ id: 42, tab_id: 9, is_plugin: true }]), '42')).toBe(false)
+    expect(parsePaneExists(JSON.stringify([{ id: 42, tab_id: 9, is_plugin: false }]), 'terminal_42')).toBe(true)
+    expect(parsePaneExists(JSON.stringify([{ id: 42, tab_id: 9, is_plugin: false }]), 'terminal_x')).toBeUndefined()
+    expect(parsePaneExists('not json', '42')).toBeUndefined()
+    expect(parsePaneExists(JSON.stringify([{ id: 7, tab_id: 1 }]), undefined)).toBeUndefined()
+    expect(parsePaneExists(JSON.stringify([{ id: 7, tab_id: 1 }]), 'terminal_7')).toBe(true)
   })
 })
 

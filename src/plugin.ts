@@ -1,5 +1,6 @@
 import type { Plugin } from '@opencode-ai/plugin'
 import type { UpdateResult } from './auto-update.js'
+import type { CompletionNotificationClient, CompletionNotificationContext, CompletionNotificationManager } from './zellij/completion-notifications.js'
 import type { OpenCodeEventLike } from './zellij/tab-title-events.js'
 import process from 'node:process'
 import { checkAndUpdate } from './auto-update.js'
@@ -8,12 +9,13 @@ import { configureSudoPane } from './permissions/sudo-pane.js'
 import { sessionManager } from './pty/manager.js'
 import { zellijPtyKillTool } from './tools/kill.js'
 import { zellijPtyListTool } from './tools/list.js'
-import { zellijPtyReadTool } from './tools/read.js'
+import { createZellijPtyReadTool } from './tools/read.js'
 import { requestSudoTool } from './tools/request-sudo.js'
 import { zellijPtySpawnTool } from './tools/spawn.js'
 import { zellijPtyWriteTool } from './tools/write.js'
 import { debug } from './utils/debug.js'
 import { errorMessage } from './utils/errors.js'
+import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
 import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './zellij/pane-watchdog.js'
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
@@ -21,12 +23,14 @@ import { deletedSessionID, getInitialBranch, handleTabTitleEvent, shouldReadInit
 import { shouldRefreshTabTitleStatusSnapshot, TabTitleStatusSnapshotRefresher } from './zellij/tab-title-status-snapshot.js'
 import { TabTitleManager } from './zellij/tab-title.js'
 
-const ptyTools = {
-  zellij_pty_spawn: zellijPtySpawnTool,
-  zellij_pty_list: zellijPtyListTool,
-  zellij_pty_write: zellijPtyWriteTool,
-  zellij_pty_read: zellijPtyReadTool,
-  zellij_pty_kill: zellijPtyKillTool,
+function createPtyTools(defaultCleanupExitedPaneOnRead: boolean) {
+  return {
+    zellij_pty_spawn: zellijPtySpawnTool,
+    zellij_pty_list: zellijPtyListTool,
+    zellij_pty_write: zellijPtyWriteTool,
+    zellij_pty_read: createZellijPtyReadTool({ defaultCleanupExitedPaneOnRead }),
+    zellij_pty_kill: zellijPtyKillTool,
+  }
 }
 
 function getProjectName(path: string): string {
@@ -109,6 +113,7 @@ async function cleanupDeletedSession(sessionId: string): Promise<void> {
 export interface ZellijPtyPluginDependencies {
   importMetaUrl?: string | undefined
   startAutoUpdateCheck?: typeof startAutoUpdateCheck | undefined
+  createCompletionNotifications?: (context: CompletionNotificationContext) => CompletionNotificationManager | undefined
 }
 
 export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies = {}): Plugin {
@@ -139,6 +144,37 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       : undefined
 
     const client = input.client
+    const completionNotifications = config.pty.completionNotification.mode === 'off'
+      ? undefined
+      : (dependencies.createCompletionNotifications?.({
+          client: client as CompletionNotificationClient,
+          workspaceRoot,
+          config: config.pty.completionNotification,
+          markSent(sessionId) {
+            try {
+              sessionManager.markTerminalNotificationSent(sessionId)
+            }
+            catch (error) {
+              debug('mark terminal notification sent failed', errorMessage(error))
+            }
+          },
+        }) ?? new SessionCompletionNotificationQueue({
+          client: client as CompletionNotificationClient,
+          workspaceRoot,
+          config: config.pty.completionNotification,
+          markSent(sessionId) {
+            try {
+              sessionManager.markTerminalNotificationSent(sessionId)
+            }
+            catch (error) {
+              debug('mark terminal notification sent failed', errorMessage(error))
+            }
+          },
+        }))
+
+    subscriberManager.setLifecycleHooks(completionNotifications
+      ? { onSessionTerminal: event => void completionNotifications.handleSessionTerminal(event).catch(error => debug('completion notification lifecycle hook failed', errorMessage(error))) }
+      : undefined)
 
     // Best-effort initial snapshot so the first rendered title reflects real
     // server state instead of briefly defaulting to idle.  The refresher
@@ -174,18 +210,34 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
             tabTitleSnapshotRefresher?.scheduleRefresh()
         }
 
+        if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
+          completionNotifications?.clearAll()
+          completionNotifications?.dispose()
+          subscriberManager.setLifecycleHooks(undefined)
+        }
+
         if (event.type === 'session.deleted') {
           const sessionID = deletedSessionID(event)
           if (!sessionID)
             return
 
           const sessions = sessionManager.listByOpenCodeSession(sessionID)
+          for (const session of sessions)
+            completionNotifications?.clearSession(session.id)
           await Promise.all(sessions.map(session => cleanupDeletedSession(session.id)))
         }
       },
-      tool: config.pty.enabled
+      'chat.message': async (
+        _input: unknown,
+        output: { message: unknown, parts: Array<Record<string, unknown> & { type: string }> },
+      ) => {
+        const injected = completionNotifications?.injectQueuedChatMessage(output) ?? output
+        if (injected !== output && injected && typeof injected === 'object' && Array.isArray((injected as { parts?: unknown }).parts))
+          output.parts = (injected as { parts: Array<Record<string, unknown> & { type: string }> }).parts
+      },
+      'tool': config.pty.enabled
         ? {
-            ...ptyTools,
+            ...createPtyTools(config.pty.cleanupExitedPaneOnRead),
             ...(config.pty.sudoPane === 'hide' ? {} : { zellij_pty_request_sudo: requestSudoTool }),
           }
         : {},

@@ -30,6 +30,21 @@ describe('tool response formatting', () => {
     expect(output).toMatchObject({ id: 'zpty_test', paneId: 'terminal_1', agentWritable: true, lineCount: 3 })
     expect(output).not.toHaveProperty('exitCodeToken')
     expect(output).not.toHaveProperty('openCodeSessionId')
+    expect(output).toHaveProperty('tombstone', null)
+  })
+
+  it('maps internal terminal sessions to the public exited status', () => {
+    const terminal = session()
+    terminal.status = 'terminal'
+    terminal.tombstone = {
+      reason: 'exit_marker',
+      terminalAt: '2026-01-01T00:00:01.000Z',
+      tail: [],
+      paneClosedAt: null,
+      notificationSentAt: null,
+    }
+
+    expect(publicSession(terminal).status).toBe('exited')
   })
 
   it('builds retry advice', () => {

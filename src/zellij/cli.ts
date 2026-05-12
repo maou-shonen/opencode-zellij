@@ -4,7 +4,7 @@ import process from 'node:process'
 import { promisify } from 'node:util'
 import { parsePaneId } from '../utils/ids.js'
 import { buildCommandArgv } from '../utils/shell-args.js'
-import { parseCurrentPaneTabId, parseTabName } from './parse.js'
+import { parseCurrentPaneTabId, parsePaneExists, parseTabName } from './parse.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -129,6 +129,11 @@ export class ZellijCli {
 
     const result = await runZellij(zellijActionArgs('list-panes', ['--json']), { timeoutMs: 5_000 })
     return parseCurrentPaneTabId(result.stdout, paneId)
+  }
+
+  async paneExists(paneId: string): Promise<boolean | undefined> {
+    const result = await runZellij(zellijActionArgs('list-panes', ['--json']), { timeoutMs: 5_000 })
+    return parsePaneExists(result.stdout, paneId)
   }
 
   async renameTab(title: string): Promise<void> {

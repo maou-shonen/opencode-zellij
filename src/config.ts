@@ -7,6 +7,7 @@ import { parseJSON, parseJSONC } from 'confbox'
 import { z } from 'zod'
 
 const sudoPaneSchema = z.enum(['allow', 'deny', 'hide'])
+const completionNotificationModeSchema = z.enum(['off', 'queue', 'toast', 'queue+toast', 'prompt'])
 
 export interface TabTitleConfig {
   enabled: boolean
@@ -19,10 +20,25 @@ export interface TabTitleConfig {
 
 export interface PtyConfig {
   enabled: boolean
+  cleanupExitedPaneOnRead: boolean
   sudoPane: SudoPaneMode
+  completionNotification: CompletionNotificationConfig
+}
+
+export interface CompletionNotificationPromptConfig {
+  requireIdle: boolean
+  cooldownMs: number
+  maxAttempts: number
+}
+
+export interface CompletionNotificationConfig {
+  mode: CompletionNotificationMode
+  prompt: CompletionNotificationPromptConfig
 }
 
 export type SudoPaneMode = z.infer<typeof sudoPaneSchema>
+
+export type CompletionNotificationMode = z.infer<typeof completionNotificationModeSchema>
 
 export type AutoUpdateConfig = boolean
 
@@ -62,7 +78,16 @@ const tabTitleLayerSchema = z.object({
 
 const ptyLayerSchema = z.object({
   enabled: z.boolean().optional().describe('Enable Zellij-backed PTY tools.'),
+  cleanupExitedPaneOnRead: z.boolean().optional().describe('Remove exited PTY panes after they are read.'),
   sudoPane: sudoPaneSchema.optional().describe('Controls whether the sudo pane tool is available, denied, or hidden.'),
+  completionNotification: z.object({
+    mode: completionNotificationModeSchema.optional().describe('Controls how completion notifications are delivered.'),
+    prompt: z.object({
+      requireIdle: z.boolean().optional().describe('Require the plugin to be idle before prompting.'),
+      cooldownMs: z.number().finite().min(0).optional().describe('Cooldown time before prompting again in milliseconds.'),
+      maxAttempts: z.number().finite().int().min(0).optional().describe('Maximum prompt attempts before backing off.'),
+    }).strict().optional().describe('Prompt-specific completion notification settings.'),
+  }).strict().optional().describe('Completion notification delivery settings.'),
 }).strict()
 
 const autoUpdateLayerSchema = z.boolean().optional().describe('Enable automatic update checks for the opencode-zellij plugin.')
@@ -85,7 +110,16 @@ export const defaultConfig: ZellijPluginConfig = {
   },
   pty: {
     enabled: true,
+    cleanupExitedPaneOnRead: true,
     sudoPane: 'allow',
+    completionNotification: {
+      mode: 'queue+toast',
+      prompt: {
+        requireIdle: true,
+        cooldownMs: 30_000,
+        maxAttempts: 1,
+      },
+    },
   },
   autoUpdate: true,
 }
@@ -116,7 +150,16 @@ function mergeConfig(user?: ConfigLayer | undefined, project?: ConfigLayer | und
     },
     pty: {
       enabled: project?.pty?.enabled ?? user?.pty?.enabled ?? defaultConfig.pty.enabled,
+      cleanupExitedPaneOnRead: project?.pty?.cleanupExitedPaneOnRead ?? user?.pty?.cleanupExitedPaneOnRead ?? defaultConfig.pty.cleanupExitedPaneOnRead,
       sudoPane: project?.pty?.sudoPane ?? user?.pty?.sudoPane ?? defaultConfig.pty.sudoPane,
+      completionNotification: {
+        mode: project?.pty?.completionNotification?.mode ?? user?.pty?.completionNotification?.mode ?? defaultConfig.pty.completionNotification.mode,
+        prompt: {
+          requireIdle: project?.pty?.completionNotification?.prompt?.requireIdle ?? user?.pty?.completionNotification?.prompt?.requireIdle ?? defaultConfig.pty.completionNotification.prompt.requireIdle,
+          cooldownMs: project?.pty?.completionNotification?.prompt?.cooldownMs ?? user?.pty?.completionNotification?.prompt?.cooldownMs ?? defaultConfig.pty.completionNotification.prompt.cooldownMs,
+          maxAttempts: project?.pty?.completionNotification?.prompt?.maxAttempts ?? user?.pty?.completionNotification?.prompt?.maxAttempts ?? defaultConfig.pty.completionNotification.prompt.maxAttempts,
+        },
+      },
     },
     autoUpdate: project?.autoUpdate ?? user?.autoUpdate ?? defaultConfig.autoUpdate,
   }

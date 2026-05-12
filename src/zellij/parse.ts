@@ -1,5 +1,6 @@
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
+import { normalizePaneId } from '../utils/ids.js'
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -37,10 +38,10 @@ function paneMatches(object: Record<string, unknown>, paneId: number): boolean {
   return candidate === paneId && object.is_plugin !== true
 }
 
-function findPaneTabId(value: unknown, paneId: number): number | undefined {
+function findPaneRecord(value: unknown, paneId: number): Record<string, unknown> | undefined {
   if (Array.isArray(value)) {
     for (const item of value) {
-      const found = findPaneTabId(item, paneId)
+      const found = findPaneRecord(item, paneId)
       if (found !== undefined)
         return found
     }
@@ -52,10 +53,10 @@ function findPaneTabId(value: unknown, paneId: number): number | undefined {
 
   const object = value as Record<string, unknown>
   if (paneMatches(object, paneId))
-    return numericProperty(object, ['tab_id', 'tabId'])
+    return object
 
   for (const nested of Object.values(object)) {
-    const found = findPaneTabId(nested, paneId)
+    const found = findPaneRecord(nested, paneId)
     if (found !== undefined)
       return found
   }
@@ -70,10 +71,31 @@ export function parseCurrentPaneTabId(listPanesJson: string, paneId: string | un
     return undefined
 
   try {
-    return findPaneTabId(JSON.parse(listPanesJson), parsedPaneId)
+    const pane = findPaneRecord(JSON.parse(listPanesJson), parsedPaneId)
+    return pane ? numericProperty(pane, ['tab_id', 'tabId']) : undefined
   }
   catch (error) {
     debug('parseCurrentPaneTabId failed', errorMessage(error))
+    return undefined
+  }
+}
+
+export function parsePaneExists(listPanesJson: string, paneId: string | undefined): boolean | undefined {
+  if (!paneId)
+    return undefined
+  let parsedPaneId: number
+  try {
+    parsedPaneId = Number(normalizePaneId(paneId).slice('terminal_'.length))
+  }
+  catch {
+    return undefined
+  }
+
+  try {
+    return findPaneRecord(JSON.parse(listPanesJson), parsedPaneId) !== undefined
+  }
+  catch (error) {
+    debug('parsePaneExists failed', errorMessage(error))
     return undefined
   }
 }

@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { SessionManager } from '../pty/manager.js'
 import type { ReadLinesInput, ReadLinesResult } from '../pty/ring-buffer.js'
-import type { PtySession } from '../pty/session.js'
+import type { PtySession, SessionTerminalReason } from '../pty/session.js'
 import { spawn } from 'node:child_process'
 import process from 'node:process'
 import { sessionManager } from '../pty/manager.js'
@@ -21,12 +21,31 @@ interface SubscriberState {
   lastExitedAt: string | null
 }
 
+export interface SubscriberTerminalEvent {
+  sessionId: string
+  reason: SessionTerminalReason
+  session: PtySession
+}
+
+export interface SubscriberLifecycleHooks {
+  onSessionTerminal?: (event: SubscriberTerminalEvent) => void | Promise<void>
+}
+
+export interface SubscriberManagerDependencies {
+  spawn?: typeof spawn | undefined
+  dumpScreen?: typeof zellijCli.dumpScreen | undefined
+  closePane?: typeof zellijCli.closePane | undefined
+  lifecycleHooks?: SubscriberLifecycleHooks | undefined
+  terminalTailLines?: number | undefined
+}
+
 type JsonObject = Record<string, unknown>
 
 export interface SubscriberStatus {
   hasBuffer: boolean
   active: boolean
   lastExitedAt: string | null
+  terminal: boolean
 }
 
 const maxStderrLines = 200
@@ -88,13 +107,32 @@ export class SubscriberManager {
   private readonly subscribers = new Map<string, SubscriberState>()
   // Per-session start promises to prevent concurrent spawn races
   private readonly startingSessions = new Map<string, Promise<void>>()
+  private readonly spawnProcess: typeof spawn
+  private readonly dumpScreen: typeof zellijCli.dumpScreen
+  private readonly closePane: typeof zellijCli.closePane
+  private lifecycleHooks: SubscriberLifecycleHooks | undefined
+  private readonly terminalTailLines: number
 
   constructor(
     private readonly sessions: SessionManager,
     private readonly maxBufferLines = Number(process.env.PTY_MAX_BUFFER_LINES ?? 50_000),
-  ) {}
+    dependencies: SubscriberManagerDependencies = {},
+  ) {
+    this.spawnProcess = dependencies.spawn ?? spawn
+    this.dumpScreen = dependencies.dumpScreen ?? zellijCli.dumpScreen
+    this.closePane = dependencies.closePane ?? zellijCli.closePane
+    this.lifecycleHooks = dependencies.lifecycleHooks
+    this.terminalTailLines = dependencies.terminalTailLines ?? 200
+  }
+
+  setLifecycleHooks(hooks: SubscriberLifecycleHooks | undefined): void {
+    this.lifecycleHooks = hooks
+  }
 
   async start(session: PtySession): Promise<void> {
+    const currentSession = this.sessions.find(session.id) ?? session
+    if (currentSession.status === 'terminal')
+      return
     const existing = this.subscribers.get(session.id)
     if (existing?.child)
       return
@@ -134,7 +172,7 @@ export class SubscriberManager {
       this.subscribers.set(session.id, state)
     }
 
-    const child = spawn('zellij', zellijCommandArgs(['subscribe', '--pane-id', session.paneId, '--scrollback', '--format', 'json', '--ansi']), {
+    const child = this.spawnProcess('zellij', zellijCommandArgs(['subscribe', '--pane-id', session.paneId, '--scrollback', '--format', 'json', '--ansi']), {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     child.stdin.end()
@@ -156,7 +194,7 @@ export class SubscriberManager {
 
     if (!existing) {
       try {
-        const snapshot = await zellijCli.dumpScreen(session.paneId)
+        const snapshot = await this.dumpScreen(session.paneId)
         if (this.subscribers.get(session.id) !== state || state.child !== child)
           return
         state.buffer.appendSnapshot(snapshot)
@@ -186,6 +224,7 @@ export class SubscriberManager {
       hasBuffer: Boolean(state),
       active: Boolean(state?.child),
       lastExitedAt: state?.lastExitedAt ?? null,
+      terminal: this.sessions.find(sessionId)?.status === 'terminal',
     }
   }
 
@@ -213,15 +252,17 @@ export class SubscriberManager {
     }
   }
 
-  async closeSessionPane(sessionId: string): Promise<void> {
+  async closeSessionPane(sessionId: string, options: { throwOnFailure?: boolean } = {}): Promise<void> {
     const session = this.sessions.get(sessionId)
     this.stop(sessionId)
     try {
-      await zellijCli.closePane(session.paneId)
+      await this.closePane(session.paneId)
     }
     catch (error) {
       // Pane may already be closed by the user or command exit.
       debug('closePane failed', errorMessage(error))
+      if (options.throwOnFailure)
+        throw error
     }
   }
 
@@ -274,11 +315,8 @@ export class SubscriberManager {
 
     const type = eventType(event)
     if (type === 'pane_closed' || type === 'PaneClosed') {
-      state.buffer.append(`[zellij-pty] Pane ${session.paneId} closed at ${new Date().toISOString()}`)
-      this.sessions.updateLineCount(sessionId, state.buffer.lineCount)
-      this.sessions.updateStatus(sessionId, session.status === 'killed' ? 'killed' : 'exited')
+      this.markSessionTerminal(sessionId, 'pane_closed')
       unregisterPaneFromWatchdog(sessionId)
-      this.stop(sessionId)
       return
     }
 
@@ -299,7 +337,7 @@ export class SubscriberManager {
       const marker = parseExitCodeMarker(line)
       if (!marker || marker.token !== session.exitCodeToken)
         continue
-      this.sessions.markExited(sessionId, marker.exitCode)
+      this.markSessionTerminal(sessionId, 'exit_marker', { exitCode: marker.exitCode })
       return
     }
   }
@@ -322,7 +360,8 @@ export class SubscriberManager {
       return
     state.child = null
     state.lastExitedAt = new Date().toISOString()
-    state.stderr.push(`[zellij-pty] subscriber exited at ${state.lastExitedAt}; last buffered output is retained.`)
+    if (this.sessions.find(sessionId)?.status !== 'terminal')
+      state.stderr.push(`[zellij-pty] subscriber exited at ${state.lastExitedAt}; last buffered output is retained.`)
     if (state.stderr.length > maxStderrLines) {
       state.stderr = state.stderr.slice(state.stderr.length - maxStderrLines)
     }
@@ -336,6 +375,39 @@ export class SubscriberManager {
       state.lastExitedAt = new Date().toISOString()
       this.sessions.updateStatus(sessionId, 'unknown')
     }
+  }
+
+  private markSessionTerminal(sessionId: string, reason: SessionTerminalReason, input: { exitCode?: number | undefined } = {}): void {
+    const state = this.subscribers.get(sessionId)
+    if (!state)
+      return
+
+    const tail = state.buffer.read({ limit: this.terminalTailLines }).lines
+    const result = this.sessions.markTerminal(sessionId, {
+      reason,
+      tail,
+      exitCode: input.exitCode,
+    })
+
+    if (result.created) {
+      try {
+        const maybePromise = this.lifecycleHooks?.onSessionTerminal?.({
+          sessionId,
+          reason,
+          session: result.session,
+        })
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          void maybePromise.catch((error) => {
+            debug('onSessionTerminal hook failed', errorMessage(error))
+          })
+        }
+      }
+      catch (error) {
+        debug('onSessionTerminal hook failed', errorMessage(error))
+      }
+    }
+
+    this.stop(sessionId)
   }
 }
 

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import ZellijPtyPlugin, { createZellijPtyPlugin, showUpdateToast, startAutoUpdateCheck } from './plugin.js'
 import type { UpdateResult } from './auto-update.js'
+import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
 
 const ptyToolNames = [
   'zellij_pty_kill',
@@ -98,6 +99,57 @@ describe('ZellijPtyPlugin', () => {
     await pluginFactory(pluginInput(project), {})
 
     expect(calls).toEqual([])
+  })
+
+  it('injects queued completion notifications through the top-level chat.message hook', async () => {
+    const project = join(tempRoot, 'project')
+    await writeProjectConfig(project, '{ "pty": { "completionNotification": { "mode": "queue" } } }')
+    let queue: SessionCompletionNotificationQueue | undefined
+    const pluginFactory = createZellijPtyPlugin({
+      createCompletionNotifications: (context) => {
+        queue = new SessionCompletionNotificationQueue(context)
+        return queue
+      },
+    })
+
+    const plugin = await pluginFactory(pluginInput(project), {}) as {
+      'chat.message'?: (input: { sessionID: string }, output: { message: unknown, parts: Array<{ type: string, text?: string }> }) => Promise<unknown>
+      chat?: unknown
+    }
+    const session = {
+      id: 'zpty_1',
+      openCodeSessionId: 'session_a',
+      paneId: 'terminal_1',
+      title: 'queued demo',
+      command: 'bash',
+      args: [],
+      cwd: process.cwd(),
+      status: 'terminal' as const,
+      lineCount: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      allowAgentInput: true,
+      humanInputOnly: false,
+      exitCode: null,
+      exitedAt: null,
+      exitCodeToken: null,
+      tombstone: null,
+    }
+
+    await queue?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })
+    const input = { sessionID: 'session_a' }
+    const originalMessage = { role: 'user', content: 'hello' }
+    const output = { message: originalMessage, parts: [{ type: 'text', text: 'hello' }] }
+
+    expect(typeof plugin['chat.message']).toBe('function')
+    expect(plugin.chat).toBeUndefined()
+
+    await plugin['chat.message']?.(input, output)
+
+    expect(output.parts[0]).toEqual({ type: 'text', text: '[OpenCode] Zellij PTY completion notice\n- zpty_1 (terminal_1) 已完成，請使用 zellij_pty_read 讀取最終輸出並清理 pane。' })
+    expect(output.parts[1]).toEqual({ type: 'text', text: 'hello' })
+    expect(output.message).toBe(originalMessage)
+    expect(input).toEqual({ sessionID: 'session_a' })
   })
 
   it('keeps sudo tool visible when sudoPane is deny', async () => {

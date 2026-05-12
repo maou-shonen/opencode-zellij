@@ -39,7 +39,12 @@ export function generateJsonSchema(): JsonObject {
   setDefault(schema, ['tabTitle', 'emojiBranch'], defaultConfig.tabTitle.emojiBranch)
   setDefault(schema, ['tabTitle', 'debounceMs'], defaultConfig.tabTitle.debounceMs)
   setDefault(schema, ['pty', 'enabled'], defaultConfig.pty.enabled)
+  setDefault(schema, ['pty', 'cleanupExitedPaneOnRead'], defaultConfig.pty.cleanupExitedPaneOnRead)
   setDefault(schema, ['pty', 'sudoPane'], defaultConfig.pty.sudoPane)
+  setDefault(schema, ['pty', 'completionNotification', 'mode'], defaultConfig.pty.completionNotification.mode)
+  setDefault(schema, ['pty', 'completionNotification', 'prompt', 'requireIdle'], defaultConfig.pty.completionNotification.prompt.requireIdle)
+  setDefault(schema, ['pty', 'completionNotification', 'prompt', 'cooldownMs'], defaultConfig.pty.completionNotification.prompt.cooldownMs)
+  setDefault(schema, ['pty', 'completionNotification', 'prompt', 'maxAttempts'], defaultConfig.pty.completionNotification.prompt.maxAttempts)
   setDefault(schema, ['autoUpdate'], defaultConfig.autoUpdate)
 
   return schema

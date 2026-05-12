@@ -1,5 +1,18 @@
-import type { CreateSessionInput, PtySession, SessionStatus } from './session.js'
+import type { CreateSessionInput, PtySession, SessionStatus, SessionTerminalReason, SessionTombstone } from './session.js'
 import { createSessionId } from '../utils/ids.js'
+
+const tombstoneTailLimit = 200
+
+export interface MarkTerminalInput {
+  reason: SessionTerminalReason
+  tail?: string[] | undefined
+  exitCode?: number | undefined
+}
+
+export interface MarkTerminalResult {
+  session: PtySession
+  created: boolean
+}
 
 export class SessionManager {
   private readonly sessions = new Map<string, PtySession>()
@@ -23,6 +36,7 @@ export class SessionManager {
       exitCode: null,
       exitedAt: null,
       exitCodeToken: input.exitCodeToken ?? null,
+      tombstone: null,
     }
     this.sessions.set(session.id, session)
     return session
@@ -52,17 +66,73 @@ export class SessionManager {
 
   updateStatus(id: string, status: SessionStatus): PtySession {
     const session = this.get(id)
+    if (session.status === 'terminal' && status !== 'terminal')
+      return session
     session.status = status
     session.updatedAt = new Date().toISOString()
     return session
   }
 
   markExited(id: string, exitCode: number): PtySession {
+    return this.markTerminal(id, { reason: 'exit_marker', exitCode }).session
+  }
+
+  markTerminal(id: string, input: MarkTerminalInput): MarkTerminalResult {
     const session = this.get(id)
-    session.status = 'exited'
-    session.exitCode = exitCode
-    session.exitedAt = new Date().toISOString()
-    session.updatedAt = session.exitedAt
+    const now = new Date().toISOString()
+    const created = session.status !== 'terminal' || !session.tombstone
+
+    if (created) {
+      const tombstone: SessionTombstone = {
+        reason: input.reason,
+        terminalAt: now,
+        tail: (input.tail ?? []).slice(-tombstoneTailLimit),
+        paneClosedAt: null,
+        notificationSentAt: null,
+      }
+
+      session.status = 'terminal'
+      session.tombstone = tombstone
+      session.updatedAt = now
+    }
+
+    if (input.exitCode !== undefined && session.exitCode === null) {
+      session.exitCode = input.exitCode
+      session.exitedAt = now
+      session.updatedAt = now
+    }
+
+    if (session.tombstone) {
+      if (input.tail?.length && session.tombstone.tail.length === 0)
+        session.tombstone.tail = input.tail.slice(-tombstoneTailLimit)
+      if (!session.tombstone.reason)
+        session.tombstone.reason = input.reason
+    }
+
+    return { session, created }
+  }
+
+  markTerminalPaneClosed(id: string): PtySession {
+    const session = this.get(id)
+    const now = new Date().toISOString()
+    if (!session.tombstone)
+      return session
+    if (!session.tombstone.paneClosedAt) {
+      session.tombstone.paneClosedAt = now
+      session.updatedAt = now
+    }
+    return session
+  }
+
+  markTerminalNotificationSent(id: string): PtySession {
+    const session = this.get(id)
+    const now = new Date().toISOString()
+    if (!session.tombstone)
+      return session
+    if (!session.tombstone.notificationSentAt) {
+      session.tombstone.notificationSentAt = now
+      session.updatedAt = now
+    }
     return session
   }
 
