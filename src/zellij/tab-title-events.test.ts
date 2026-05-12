@@ -76,9 +76,13 @@ describe('tab title event routing', () => {
 
     expect(manager.calls).toEqual([
       'needs-input:q1:s1',
+      'status:s1:busy',
       'clear-input:q1',
+      'status:s1:busy',
       'needs-input:q2:s1',
+      'status:s1:busy',
       'clear-input:q2',
+      'status:s1:busy',
     ])
   })
 
@@ -92,16 +96,59 @@ describe('tab title event routing', () => {
 
     expect(manager.calls).toEqual([
       'needs-input:p1:s1',
+      'status:s1:busy',
       'clear-input:p1',
+      'status:s1:busy',
       'needs-input:p2:s1',
+      'status:s1:busy',
       'clear-input:p2',
+      'status:s1:busy',
     ])
   })
 
   it('clears resolved permission.updated events instead of leaving stale pending input', () => {
-    expect(route({ type: 'permission.updated', properties: { id: 'p1', sessionID: 's1', status: 'APPROVED' } })).toEqual(['clear-input:p1'])
-    expect(route({ type: 'permission.updated', properties: { id: 'p2', sessionID: 's1', state: 'denied' } })).toEqual(['clear-input:p2'])
-    expect(route({ type: 'permission.updated', properties: { id: 'p3', sessionID: 's1', status: 'pending' } })).toEqual(['needs-input:p3:s1'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p1', sessionID: 's1', status: 'APPROVED' } })).toEqual(['clear-input:p1', 'status:s1:busy'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p2', sessionID: 's1', state: 'denied' } })).toEqual(['clear-input:p2', 'status:s1:busy'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p3', sessionID: 's1', status: 'pending' } })).toEqual(['needs-input:p3:s1', 'status:s1:busy'])
+  })
+
+  it('marks session busy alongside pending input for question.asked and permission.asked', () => {
+    expect(route({ type: 'question.asked', properties: { id: 'q1', sessionID: 's1' } })).toEqual(['needs-input:q1:s1', 'status:s1:busy'])
+    expect(route({ type: 'permission.asked', properties: { id: 'p1', sessionID: 's2' } })).toEqual(['needs-input:p1:s2', 'status:s2:busy'])
+  })
+
+  it('clears overlay and restores session to busy after question.replied or question.rejected', () => {
+    expect(route({ type: 'question.replied', properties: { requestID: 'q1', sessionID: 's1' } })).toEqual(['clear-input:q1', 'status:s1:busy'])
+    expect(route({ type: 'question.rejected', properties: { requestID: 'q2', sessionID: 's1' } })).toEqual(['clear-input:q2', 'status:s1:busy'])
+  })
+
+  it('clears overlay and restores session to busy after permission.replied', () => {
+    expect(route({ type: 'permission.replied', properties: { requestID: 'p1', sessionID: 's1' } })).toEqual(['clear-input:p1', 'status:s1:busy'])
+  })
+
+  it('clears overlay and restores session to busy for resolved permission.updated', () => {
+    expect(route({ type: 'permission.updated', properties: { id: 'p1', sessionID: 's1', status: 'APPROVED' } })).toEqual(['clear-input:p1', 'status:s1:busy'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p2', sessionID: 's1', state: 'denied' } })).toEqual(['clear-input:p2', 'status:s1:busy'])
+  })
+
+  it('marks pending and busy for pending/unresolved permission.updated', () => {
+    expect(route({ type: 'permission.updated', properties: { id: 'p1', sessionID: 's1', status: 'pending' } })).toEqual(['needs-input:p1:s1', 'status:s1:busy'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p2', sessionID: 's2', state: 'unresolved' } })).toEqual(['needs-input:p2:s2', 'status:s2:busy'])
+  })
+
+  it('does not mark pending input without a session id', () => {
+    expect(route({ type: 'question.asked', properties: { id: 'q1' } })).toEqual([])
+    expect(route({ type: 'permission.updated', properties: { id: 'p1', status: 'pending' } })).toEqual([])
+  })
+
+  it('resolved permission.updated with no sessionID clears overlay but does not update busy', () => {
+    expect(route({ type: 'permission.updated', properties: { id: 'p1', status: 'APPROVED' } })).toEqual(['clear-input:p1'])
+    expect(route({ type: 'permission.updated', properties: { id: 'p2', state: 'denied' } })).toEqual(['clear-input:p2'])
+  })
+
+  it('question.replied with no sessionID clears overlay but does not update busy', () => {
+    expect(route({ type: 'question.replied', properties: { requestID: 'q1' } })).toEqual(['clear-input:q1'])
+    expect(route({ type: 'question.rejected', properties: { requestID: 'q2' } })).toEqual(['clear-input:q2'])
   })
 
   it('routes exact v2 question and permission payload ids', () => {
@@ -114,9 +161,13 @@ describe('tab title event routing', () => {
 
     expect(manager.calls).toEqual([
       'needs-input:q1:s1',
+      'status:s1:busy',
       'clear-input:q1',
+      'status:s1:busy',
       'needs-input:p1:s1',
+      'status:s1:busy',
       'clear-input:p1',
+      'status:s1:busy',
     ])
   })
 
@@ -164,11 +215,6 @@ describe('tab title event routing', () => {
     resolveOrder.push('await-end')
 
     expect(resolveOrder).toEqual(['destroy-start', 'await-start', 'destroy-end', 'await-end'])
-  })
-
-  it('does not mark pending input without a session id', () => {
-    expect(route({ type: 'question.asked', properties: { id: 'q1' } })).toEqual([])
-    expect(route({ type: 'permission.updated', properties: { id: 'p1' } })).toEqual([])
   })
 
   it('ignores malformed events instead of throwing', () => {

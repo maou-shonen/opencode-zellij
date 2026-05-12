@@ -137,26 +137,36 @@ export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event
     case 'permission.asked': {
       const id = inputRequestID(properties)
       const sessionID = stringProperty(properties, 'sessionID')
-      if (id && sessionID)
+      if (id && sessionID) {
         tabTitleManager.markNeedsInput(id, sessionID)
+        tabTitleManager.updateSessionStatus(sessionID, { type: 'busy' })
+      }
       break
     }
     case 'permission.updated': {
       const id = inputRequestID(properties)
       const sessionID = stringProperty(properties, 'sessionID')
       const state = inputState(properties)
-      if (id && isResolvedInputState(state))
+      if (id && isResolvedInputState(state)) {
         tabTitleManager.clearNeedsInput(id)
-      else if (id && sessionID)
+        if (sessionID)
+          tabTitleManager.updateSessionStatus(sessionID, { type: 'busy' })
+      }
+      else if (id && sessionID) {
         tabTitleManager.markNeedsInput(id, sessionID)
+        tabTitleManager.updateSessionStatus(sessionID, { type: 'busy' })
+      }
       break
     }
     case 'question.replied':
     case 'question.rejected':
     case 'permission.replied': {
       const id = inputRequestID(properties)
+      const sessionID = stringProperty(properties, 'sessionID')
       if (id)
         tabTitleManager.clearNeedsInput(id)
+      if (sessionID)
+        tabTitleManager.updateSessionStatus(sessionID, { type: 'busy' })
       break
     }
     case 'session.deleted': {
