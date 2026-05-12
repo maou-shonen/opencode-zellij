@@ -113,20 +113,19 @@ export function handleTabTitleEvent(tabTitleManager: TabTitleEventManager, event
     case 'session.status': {
       const sessionID = stringProperty(properties, 'sessionID')
       const status = sessionStatusProperty(properties)
-      if (sessionID && status)
+      // Busy/retry events are safe optimistic updates. Idle-like events are
+      // intentionally reconciled from `/session/status` by the plugin instead:
+      // a lone parent/child idle event can be stale during subagent handoff.
+      if (sessionID && status && status.type !== 'idle')
         tabTitleManager.updateSessionStatus(sessionID, status)
       break
     }
     case 'session.idle': {
-      const sessionID = stringProperty(properties, 'sessionID')
-      if (sessionID)
-        tabTitleManager.markSessionIdle(sessionID)
+      // Base idle is snapshot-driven; see the session.status note above.
       break
     }
     case 'session.error': {
-      const sessionID = stringProperty(properties, 'sessionID')
-      if (sessionID)
-        tabTitleManager.markSessionIdle(sessionID)
+      // Base idle is snapshot-driven; see the session.status note above.
       break
     }
     case 'vcs.branch.updated': {

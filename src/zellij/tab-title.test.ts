@@ -153,6 +153,66 @@ describe('TabTitleManager', () => {
     })
   })
 
+  it('applies snapshot: busy sessions show running title', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.applySessionStatusSnapshot({ s1: { type: 'busy' } })
+      expect(manager.getCurrentTitle()).toBe('⚡ my-project')
+    })
+  })
+
+  it('applies snapshot: retry sessions show running title', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.applySessionStatusSnapshot({ s1: { type: 'retry', attempt: 1, message: 'oops', next: 0 } })
+      expect(manager.getCurrentTitle()).toBe('⚡ my-project')
+    })
+  })
+
+  it('applies snapshot: idle sessions show idle title', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.applySessionStatusSnapshot({ s1: { type: 'idle' } })
+      expect(manager.getCurrentTitle()).toBe('🟢 my-project')
+    })
+  })
+
+  it('applies snapshot: absent sessions are removed (no stale busy)', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.updateSessionStatus('s1', { type: 'busy' })
+      manager.applySessionStatusSnapshot({})
+      expect(manager.getCurrentTitle()).toBe('🟢 my-project')
+    })
+  })
+
+  it('applies snapshot: empty snapshot clears stale busy', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.updateSessionStatus('s1', { type: 'busy' })
+      manager.applySessionStatusSnapshot({ s2: { type: 'idle' } })
+      expect(manager.getCurrentTitle()).toBe('🟢 my-project')
+    })
+  })
+
+  it('snapshot base idle is overridden by needs-input overlay', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.applySessionStatusSnapshot({ s1: { type: 'idle' } })
+      manager.markNeedsInput('q1', 's1')
+      expect(manager.getCurrentTitle()).toBe('💬 my-project')
+    })
+  })
+
+  it('snapshot base running is overridden by needs-input overlay', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.applySessionStatusSnapshot({ s1: { type: 'busy' } })
+      manager.markNeedsInput('q1', 's1')
+      expect(manager.getCurrentTitle()).toBe('💬 my-project')
+    })
+  })
+
   it('includes branch segment when branch is set', async () => {
     await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })

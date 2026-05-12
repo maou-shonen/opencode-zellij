@@ -18,6 +18,7 @@ import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './ze
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
 import { deletedSessionID, getInitialBranch, handleTabTitleEvent, shouldReadInitialBranch } from './zellij/tab-title-events.js'
+import { shouldRefreshTabTitleStatusSnapshot, TabTitleStatusSnapshotRefresher } from './zellij/tab-title-status-snapshot.js'
 import { TabTitleManager } from './zellij/tab-title.js'
 
 const ptyTools = {
@@ -137,11 +138,25 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
         })
       : undefined
 
+    const client = input.client
+
+    // Best-effort initial snapshot so the first rendered title reflects real
+    // server state instead of briefly defaulting to idle.  The refresher
+    // handles debouncing for subsequent refreshes triggered by events.
+    const tabTitleSnapshotRefresher = tabTitleManager
+      ? new TabTitleStatusSnapshotRefresher({
+          client,
+          workspaceRoot,
+          manager: tabTitleManager,
+          debounceMs: 1_000,
+        })
+      : undefined
+
+    await tabTitleSnapshotRefresher?.refreshNow()
+
     // Best-effort initial render; no-op when not inside a real Zellij pane.
     tabTitleManager?.renderImmediate()
       .catch(error => debug('initial tab title render failed', errorMessage(error)))
-
-    const client = input.client
 
     if (config.autoUpdate)
       (dependencies.startAutoUpdateCheck ?? startAutoUpdateCheck)(client, dependencies.importMetaUrl ?? import.meta.url)
@@ -150,8 +165,14 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       async event(input) {
         const event: OpenCodeEventLike = input.event
 
-        if (tabTitleManager)
+        if (tabTitleManager) {
+          // Cancel pending snapshot work before manager destroy can await external cleanup.
+          if (event.type === 'server.instance.disposed' || event.type === 'global.disposed')
+            tabTitleSnapshotRefresher?.dispose()
           await handleTabTitleEvent(tabTitleManager, event)
+          if (shouldRefreshTabTitleStatusSnapshot(event))
+            tabTitleSnapshotRefresher?.scheduleRefresh()
+        }
 
         if (event.type === 'session.deleted') {
           const sessionID = deletedSessionID(event)

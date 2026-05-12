@@ -41,7 +41,7 @@ function route(event: OpenCodeEventLike): string[] {
 }
 
 describe('tab title event routing', () => {
-  it('routes session status, idle, error, deleted, and branch events', () => {
+  it('routes busy status, deleted, and branch events while leaving idle reconciliation to snapshots', () => {
     const manager = new RecordingTabTitleManager()
 
     handleTabTitleEvent(manager, { type: 'session.status', properties: { sessionID: 's1', status: { type: 'busy' } } })
@@ -52,11 +52,15 @@ describe('tab title event routing', () => {
 
     expect(manager.calls).toEqual([
       'status:s1:busy',
-      'idle:s1',
-      'idle:s1',
       'branch:feature/title',
       'remove:s1',
     ])
+  })
+
+  it('does not apply idle-like events optimistically', () => {
+    expect(route({ type: 'session.status', properties: { sessionID: 's1', status: { type: 'idle' } } })).toEqual([])
+    expect(route({ type: 'session.idle', properties: { sessionID: 's1' } })).toEqual([])
+    expect(route({ type: 'session.error', properties: { sessionID: 's1' } })).toEqual([])
   })
 
   it('routes retry status', () => {

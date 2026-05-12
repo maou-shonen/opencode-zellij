@@ -107,6 +107,35 @@ export class TabTitleManager {
     this.scheduleUpdate()
   }
 
+  /**
+   * Applies a snapshot of session statuses from the server.
+   *
+   * This replaces the entire base status map. Sessions absent from the snapshot
+   * (e.g. because they ended) are removed so stale busy/idle entries do not
+   * persist. This is the authoritative source for the "running vs idle" base
+   * state; individual session.status events still perform optimistic updates
+   * for immediacy but the snapshot corrects drift.
+   *
+   * The `needs-input` overlay remains independent — it is managed purely by
+   * events (question/permission asked/replied/etc.) and always takes priority
+   * over the snapshot base when computing the displayed title.
+   */
+  applySessionStatusSnapshot(statuses: Record<string, OpenCodeSessionStatus>): void {
+    // Remove sessions that are no longer in the snapshot.
+    for (const sessionID of this.sessionStatuses.keys()) {
+      if (!(sessionID in statuses))
+        this.sessionStatuses.delete(sessionID)
+    }
+    // Update or insert based on the snapshot.
+    for (const [sessionID, status] of Object.entries(statuses)) {
+      const activity: SessionActivity = status.type === 'idle' ? 'idle' : 'running'
+      const existing = this.sessionStatuses.get(sessionID)
+      if (existing !== activity)
+        this.sessionStatuses.set(sessionID, activity)
+    }
+    this.scheduleUpdate()
+  }
+
   updateSessionStatus(sessionID: string, status: OpenCodeSessionStatus): void {
     const activity: SessionActivity = status.type === 'idle' ? 'idle' : 'running'
     const existing = this.sessionStatuses.get(sessionID)
