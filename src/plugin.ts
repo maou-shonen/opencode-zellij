@@ -188,7 +188,10 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
         })
       : undefined
 
-    await tabTitleSnapshotRefresher?.refreshNow()
+    // Do not block plugin startup on the OpenCode status API: during startup the
+    // server may not be ready to answer session.status yet.
+    tabTitleSnapshotRefresher?.refreshNow()
+      .catch(error => debug('initial tab title snapshot refresh failed', errorMessage(error)))
 
     // Best-effort initial render; no-op when not inside a real Zellij pane.
     tabTitleManager?.renderImmediate()

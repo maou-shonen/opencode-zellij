@@ -176,9 +176,28 @@ describe('ZellijPtyPlugin', () => {
       },
     }), {}) as { event?: (input: { event: unknown }) => Promise<void> }
     await plugin.event?.({ event: { type: 'vcs.branch.updated', properties: { branch: 'main' } } })
-    // Initial snapshot is awaited before the first render, so the directory
-    // should already be captured without depending on event refresh timing.
+    // Initial snapshot starts immediately, but plugin initialization does not
+    // wait for it to finish.
     expect(callDirectory.some(d => d === project)).toBe(true)
+  })
+
+  it('does not block plugin initialization when initial session status never resolves', async () => {
+    const project = join(tempRoot, 'project')
+    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
+    const pluginFactory = createZellijPtyPlugin({})
+
+    const result = await Promise.race([
+      pluginFactory(pluginInput(project, {
+        client: {
+          session: {
+            status: async () => new Promise(() => {}),
+          },
+        },
+      }), {}).then(() => 'resolved'),
+      new Promise(resolve => setTimeout(() => resolve('timeout'), 50)),
+    ])
+
+    expect(result).toBe('resolved')
   })
 
   it('does not throw when client.session.status is missing', async () => {
