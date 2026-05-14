@@ -20,7 +20,6 @@ import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './ze
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
 import { deletedSessionID, getInitialBranch, handleTabTitleEvent, shouldReadInitialBranch } from './zellij/tab-title-events.js'
-import { shouldRefreshTabTitleStatusSnapshot, TabTitleStatusSnapshotRefresher } from './zellij/tab-title-status-snapshot.js'
 import { TabTitleManager } from './zellij/tab-title.js'
 
 function createPtyTools(defaultCleanupExitedPaneOnRead: boolean) {
@@ -176,23 +175,6 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       ? { onSessionTerminal: event => void completionNotifications.handleSessionTerminal(event).catch(error => debug('completion notification lifecycle hook failed', errorMessage(error))) }
       : undefined)
 
-    // Best-effort initial snapshot so the first rendered title reflects real
-    // server state instead of briefly defaulting to idle.  The refresher
-    // handles debouncing for subsequent refreshes triggered by events.
-    const tabTitleSnapshotRefresher = tabTitleManager
-      ? new TabTitleStatusSnapshotRefresher({
-          client,
-          workspaceRoot,
-          manager: tabTitleManager,
-          debounceMs: 1_000,
-        })
-      : undefined
-
-    // Do not block plugin startup on the OpenCode status API: during startup the
-    // server may not be ready to answer session.status yet.
-    tabTitleSnapshotRefresher?.refreshNow()
-      .catch(error => debug('initial tab title snapshot refresh failed', errorMessage(error)))
-
     // Best-effort initial render; no-op when not inside a real Zellij pane.
     tabTitleManager?.renderImmediate()
       .catch(error => debug('initial tab title render failed', errorMessage(error)))
@@ -204,14 +186,8 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       async event(input) {
         const event: OpenCodeEventLike = input.event
 
-        if (tabTitleManager) {
-          // Cancel pending snapshot work before manager destroy can await external cleanup.
-          if (event.type === 'server.instance.disposed' || event.type === 'global.disposed')
-            tabTitleSnapshotRefresher?.dispose()
+        if (tabTitleManager)
           await handleTabTitleEvent(tabTitleManager, event)
-          if (shouldRefreshTabTitleStatusSnapshot(event))
-            tabTitleSnapshotRefresher?.scheduleRefresh()
-        }
 
         if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
           completionNotifications?.clearAll()

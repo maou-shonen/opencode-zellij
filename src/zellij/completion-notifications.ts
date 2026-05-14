@@ -3,7 +3,75 @@ import type { CompletionNotificationConfig } from '../config.js'
 import type { PtySession, SessionTerminalReason } from '../pty/session.js'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { fetchSessionStatusSnapshot } from './tab-title-status-snapshot.js'
+
+interface PromptIdleStatusClient {
+  session?: {
+    status?: (options: { query: { directory: string } }) => Promise<unknown>
+  }
+}
+
+/** Fetches the prompt-mode idle guard status; unrelated to tab title state. */
+async function fetchPromptIdleStatusSnapshot(
+  client: PromptIdleStatusClient,
+  workspaceRoot: string,
+): Promise<Record<string, OpenCodeSessionStatus> | undefined> {
+  try {
+    if (!client.session?.status) {
+      debug('fetchPromptIdleStatusSnapshot: client.session.status not available')
+      return undefined
+    }
+
+    const result = await client.session.status({ query: { directory: workspaceRoot } })
+    const payload = result && typeof result === 'object' && 'data' in result
+      ? (result as { data: unknown }).data
+      : result
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      debug('fetchPromptIdleStatusSnapshot received non-object payload')
+      return undefined
+    }
+
+    const entries = Object.entries(payload)
+    if (entries.length === 0)
+      return {}
+
+    const snapshot: Record<string, OpenCodeSessionStatus> = {}
+    for (const [sessionID, status] of entries) {
+      const parsed = parseSessionStatus(status)
+      if (parsed === undefined) {
+        debug('fetchPromptIdleStatusSnapshot received invalid status entry, rejecting entire snapshot')
+        return undefined
+      }
+      snapshot[sessionID] = parsed
+    }
+
+    return snapshot
+  }
+  catch (err) {
+    debug('fetchPromptIdleStatusSnapshot failed', errorMessage(err))
+    return undefined
+  }
+}
+
+function parseSessionStatus(value: unknown): OpenCodeSessionStatus | undefined {
+  if (!value || typeof value !== 'object' || !('type' in value))
+    return undefined
+
+  const status = value as Record<string, unknown>
+  if (status.type === 'idle' || status.type === 'busy')
+    return { type: status.type }
+
+  if (status.type === 'retry') {
+    return {
+      type: 'retry',
+      attempt: typeof status.attempt === 'number' ? status.attempt : 0,
+      message: typeof status.message === 'string' ? status.message : '',
+      next: typeof status.next === 'number' ? status.next : 0,
+    }
+  }
+
+  return undefined
+}
 
 export interface CompletionNotificationToastClient {
   tui?: {
@@ -271,7 +339,7 @@ export class SessionCompletionNotificationQueue implements CompletionNotificatio
 
     const session = this.context.client.session
     const prompt = session?.prompt ?? session?.promptAsync
-    const statusSnapshot = await fetchSessionStatusSnapshot(this.context.client, this.context.workspaceRoot)
+    const statusSnapshot = await fetchPromptIdleStatusSnapshot(this.context.client, this.context.workspaceRoot)
     const decision = evaluateCompletionPromptDecision({
       event: state.event,
       config: this.context.config,

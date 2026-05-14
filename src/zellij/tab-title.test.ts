@@ -153,63 +153,65 @@ describe('TabTitleManager', () => {
     })
   })
 
-  it('applies snapshot: busy sessions show running title', async () => {
+  it('parent busy + child busy + child idle => still running', async () => {
     await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
-      manager.applySessionStatusSnapshot({ s1: { type: 'busy' } })
+      manager.updateSessionStatus('parent', { type: 'busy' })
+      manager.updateSessionStatus('child', { type: 'busy' })
+      manager.markSessionIdle('child')
       expect(manager.getCurrentTitle()).toBe('⚡ my-project')
     })
   })
 
-  it('applies snapshot: retry sessions show running title', async () => {
+  it('parent busy + child deleted => still running', async () => {
     await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
-      manager.applySessionStatusSnapshot({ s1: { type: 'retry', attempt: 1, message: 'oops', next: 0 } })
+      manager.updateSessionStatus('parent', { type: 'busy' })
+      manager.updateSessionStatus('child', { type: 'busy' })
+      manager.removeSession('child')
       expect(manager.getCurrentTitle()).toBe('⚡ my-project')
     })
   })
 
-  it('applies snapshot: idle sessions show idle title', async () => {
+  it('parent idle + child busy => still running', async () => {
     await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
-      manager.applySessionStatusSnapshot({ s1: { type: 'idle' } })
+      manager.updateSessionStatus('parent', { type: 'idle' })
+      manager.updateSessionStatus('child', { type: 'busy' })
+      expect(manager.getCurrentTitle()).toBe('⚡ my-project')
+    })
+  })
+
+  it('parent busy + child busy + child idle + parent idle => idle', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.updateSessionStatus('parent', { type: 'busy' })
+      manager.updateSessionStatus('child', { type: 'busy' })
+      manager.markSessionIdle('child')
+      manager.markSessionIdle('parent')
       expect(manager.getCurrentTitle()).toBe('🟢 my-project')
     })
   })
 
-  it('applies snapshot: absent sessions are removed (no stale busy)', async () => {
+  it('child idle must not clear parent running', async () => {
+    await withZellijEnv('1', () => {
+      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
+      manager.updateSessionStatus('parent', { type: 'busy' })
+      manager.markSessionIdle('child')
+      expect(manager.getCurrentTitle()).toBe('⚡ my-project')
+    })
+  })
+
+  it('needs-input overrides running/idle and clearing input returns to per-session running if present', async () => {
     await withZellijEnv('1', () => {
       const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
       manager.updateSessionStatus('s1', { type: 'busy' })
-      manager.applySessionStatusSnapshot({})
-      expect(manager.getCurrentTitle()).toBe('🟢 my-project')
-    })
-  })
-
-  it('applies snapshot: empty snapshot clears stale busy', async () => {
-    await withZellijEnv('1', () => {
-      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
-      manager.updateSessionStatus('s1', { type: 'busy' })
-      manager.applySessionStatusSnapshot({ s2: { type: 'idle' } })
-      expect(manager.getCurrentTitle()).toBe('🟢 my-project')
-    })
-  })
-
-  it('snapshot base idle is overridden by needs-input overlay', async () => {
-    await withZellijEnv('1', () => {
-      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
-      manager.applySessionStatusSnapshot({ s1: { type: 'idle' } })
       manager.markNeedsInput('q1', 's1')
       expect(manager.getCurrentTitle()).toBe('💬 my-project')
-    })
-  })
-
-  it('snapshot base running is overridden by needs-input overlay', async () => {
-    await withZellijEnv('1', () => {
-      const manager = new TabTitleManager({ projectName: 'my-project', cli: mockCli })
-      manager.applySessionStatusSnapshot({ s1: { type: 'busy' } })
-      manager.markNeedsInput('q1', 's1')
-      expect(manager.getCurrentTitle()).toBe('💬 my-project')
+      manager.clearNeedsInput('q1')
+      expect(manager.getCurrentTitle()).toBe('⚡ my-project')
+      manager.markSessionIdle('s1')
+      expect(manager.getCurrentTitle()).toBe('🟢 my-project')
     })
   })
 

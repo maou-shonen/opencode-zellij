@@ -160,138 +160,34 @@ describe('ZellijPtyPlugin', () => {
     expect(Object.keys(plugin.tool ?? {})).toContain('zellij_pty_request_sudo')
   })
 
-  it('calls client.session.status at initialization with workspace directory', async () => {
+  it('does not call client.session.status during startup or relevant event handling when tab title enabled', async () => {
     const project = join(tempRoot, 'project')
     await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const callDirectory: string[] = []
+    let statusCallCount = 0
     const pluginFactory = createZellijPtyPlugin({})
     const plugin = await pluginFactory(pluginInput(project, {
-      client: {
-        session: {
-          status: async (opts: { query: { directory: string } }) => {
-            callDirectory.push(opts.query.directory)
-            return { data: {} }
-          },
-        },
-      },
-    }), {}) as { event?: (input: { event: unknown }) => Promise<void> }
-    await plugin.event?.({ event: { type: 'vcs.branch.updated', properties: { branch: 'main' } } })
-    // Initial snapshot starts immediately, but plugin initialization does not
-    // wait for it to finish.
-    expect(callDirectory.some(d => d === project)).toBe(true)
-  })
-
-  it('does not block plugin initialization when initial session status never resolves', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const pluginFactory = createZellijPtyPlugin({})
-
-    const result = await Promise.race([
-      pluginFactory(pluginInput(project, {
-        client: {
-          session: {
-            status: async () => new Promise(() => {}),
-          },
-        },
-      }), {}).then(() => 'resolved'),
-      new Promise(resolve => setTimeout(() => resolve('timeout'), 50)),
-    ])
-
-    expect(result).toBe('resolved')
-  })
-
-  it('does not throw when client.session.status is missing', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const pluginFactory = createZellijPtyPlugin({})
-    // Should not throw even though client.session is absent
-    await pluginFactory(pluginInput(project, { client: {} }), {})
-  })
-
-  it('does not throw when client.session.status throws', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const pluginFactory = createZellijPtyPlugin({})
-    await pluginFactory(pluginInput(project, {
       client: {
         session: {
           status: async () => {
-            throw new Error('network error')
-          },
-        },
-      },
-    }), {})
-    // Should not throw — errors are swallowed
-  })
-
-  it('does not throw when client.session.status returns raw array', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const pluginFactory = createZellijPtyPlugin({})
-    // Should handle plain array response (not { data: [...] } envelope)
-    await pluginFactory(pluginInput(project, {
-      client: {
-        session: {
-          status: async () => [
-            { sessionID: 's1', status: { type: 'busy' } },
-          ],
-        },
-      },
-    }), {})
-  })
-
-  it('schedules snapshot refresh on session status events', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const callDirectory: string[] = []
-    const pluginFactory = createZellijPtyPlugin({})
-    const plugin = await pluginFactory(pluginInput(project, {
-      client: {
-        session: {
-          status: async (opts: { query: { directory: string } }) => {
-            callDirectory.push(opts.query.directory)
+            statusCallCount++
             return { data: {} }
           },
         },
       },
     }), {}) as { event?: (input: { event: unknown }) => Promise<void> }
-    // Fire multiple events that should trigger snapshot refresh
+
+    // Fire tab-title relevant events; none should call the status API.
     await plugin.event?.({ event: { type: 'session.status', properties: { sessionID: 's1', status: { type: 'busy' } } } })
     await plugin.event?.({ event: { type: 'session.idle', properties: { sessionID: 's1' } } })
     await plugin.event?.({ event: { type: 'session.error', properties: { sessionID: 's1' } } })
-    const initialCalls = callDirectory.length
-    await new Promise(resolve => setTimeout(resolve, 1_100))
-    // Debounce coalesces the three events into one snapshot refresh.
-    expect(callDirectory.length).toBe(initialCalls + 1)
-    expect(callDirectory.at(-1)).toBe(project)
-  })
+    await plugin.event?.({ event: { type: 'session.created', properties: { sessionID: 's1' } } })
+    await plugin.event?.({ event: { type: 'session.deleted', properties: { info: { id: 's1' } } } })
+    await plugin.event?.({ event: { type: 'question.asked', properties: { id: 'q1', sessionID: 's1' } } })
+    await plugin.event?.({ event: { type: 'question.replied', properties: { requestID: 'q1', sessionID: 's1' } } })
+    await plugin.event?.({ event: { type: 'permission.asked', properties: { id: 'p1', sessionID: 's1' } } })
+    await plugin.event?.({ event: { type: 'permission.replied', properties: { requestID: 'p1', sessionID: 's1' } } })
 
-  it('does not fire pending snapshot refresh after disposed event', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "tabTitle": { "enabled": true } }')
-    const callDirectory: string[] = []
-    const pluginFactory = createZellijPtyPlugin({})
-    const plugin = await pluginFactory(pluginInput(project, {
-      client: {
-        session: {
-          status: async (opts: { query: { directory: string } }) => {
-            callDirectory.push(opts.query.directory)
-            return { data: {} }
-          },
-        },
-      },
-    }), {}) as { event?: (input: { event: unknown }) => Promise<void> }
-
-    const callsAfterInit = callDirectory.length
-
-    await plugin.event?.({ event: { type: 'session.status', properties: { sessionID: 's1', status: { type: 'busy' } } } })
-    await plugin.event?.({ event: { type: 'server.instance.disposed', properties: {} } })
-
-    // Wait long enough for any non-disposed debounce to have fired (1s debounce + buffer)
-    await new Promise(resolve => setTimeout(resolve, 1_200))
-
-    // No additional session.status calls should occur because the disposed event cancels the timer.
-    expect(callDirectory.length).toBe(callsAfterInit)
+    expect(statusCallCount).toBe(0)
   })
 })
 

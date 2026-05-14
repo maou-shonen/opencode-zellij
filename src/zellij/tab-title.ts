@@ -11,8 +11,6 @@ export interface TabTitleCli {
 
 export type TabTitleStatus = 'idle' | 'running' | 'needs-input'
 
-type SessionActivity = 'idle' | 'running'
-
 export interface TabTitleEmojis {
   idle: string
   running: string
@@ -65,7 +63,7 @@ export interface TabTitleManagerOptions {
 }
 
 export class TabTitleManager {
-  private readonly sessionStatuses = new Map<string, SessionActivity>()
+  private readonly runningSessions = new Set<string>()
   private readonly pendingInputs = new Map<string, string>()
   private branchName: string | undefined
   private desiredTitle: string | undefined
@@ -107,50 +105,30 @@ export class TabTitleManager {
     this.scheduleUpdate()
   }
 
-  /**
-   * Applies a snapshot of session statuses from the server.
-   *
-   * This replaces the entire base status map. Sessions absent from the snapshot
-   * (e.g. because they ended) are removed so stale busy/idle entries do not
-   * persist. This is the authoritative source for the "running vs idle" base
-   * state; individual session.status events still perform optimistic updates
-   * for immediacy but the snapshot corrects drift.
-   *
-   * The `needs-input` overlay remains independent — it is managed purely by
-   * events (question/permission asked/replied/etc.) and always takes priority
-   * over the snapshot base when computing the displayed title.
-   */
-  applySessionStatusSnapshot(statuses: Record<string, OpenCodeSessionStatus>): void {
-    // Remove sessions that are no longer in the snapshot.
-    for (const sessionID of this.sessionStatuses.keys()) {
-      if (!(sessionID in statuses))
-        this.sessionStatuses.delete(sessionID)
-    }
-    // Update or insert based on the snapshot.
-    for (const [sessionID, status] of Object.entries(statuses)) {
-      const activity: SessionActivity = status.type === 'idle' ? 'idle' : 'running'
-      const existing = this.sessionStatuses.get(sessionID)
-      if (existing !== activity)
-        this.sessionStatuses.set(sessionID, activity)
-    }
-    this.scheduleUpdate()
-  }
-
   updateSessionStatus(sessionID: string, status: OpenCodeSessionStatus): void {
-    const activity: SessionActivity = status.type === 'idle' ? 'idle' : 'running'
-    const existing = this.sessionStatuses.get(sessionID)
-    if (existing === activity)
-      return
-    this.sessionStatuses.set(sessionID, activity)
-    this.scheduleUpdate()
+    const isRunning = status.type === 'busy' || status.type === 'retry'
+    const wasRunning = this.runningSessions.has(sessionID)
+    if (isRunning) {
+      if (!wasRunning) {
+        this.runningSessions.add(sessionID)
+        this.scheduleUpdate()
+      }
+    }
+    else {
+      if (wasRunning) {
+        this.runningSessions.delete(sessionID)
+        this.scheduleUpdate()
+      }
+    }
   }
 
   markSessionIdle(sessionID: string): void {
-    this.updateSessionStatus(sessionID, { type: 'idle' })
+    if (this.runningSessions.delete(sessionID))
+      this.scheduleUpdate()
   }
 
   removeSession(sessionID: string): void {
-    const hadSessionStatus = this.sessionStatuses.delete(sessionID)
+    const hadRunning = this.runningSessions.delete(sessionID)
     let hadPendingInput = false
     for (const [id, pendingSessionID] of this.pendingInputs) {
       if (pendingSessionID === sessionID) {
@@ -159,7 +137,7 @@ export class TabTitleManager {
       }
     }
 
-    if (!hadSessionStatus && !hadPendingInput)
+    if (!hadRunning && !hadPendingInput)
       return
     this.scheduleUpdate()
   }
@@ -178,11 +156,7 @@ export class TabTitleManager {
   }
 
   private get isBusy(): boolean {
-    for (const activity of this.sessionStatuses.values()) {
-      if (activity === 'running')
-        return true
-    }
-    return false
+    return this.runningSessions.size > 0
   }
 
   private get needsInput(): boolean {
