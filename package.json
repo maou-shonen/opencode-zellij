@@ -1,7 +1,7 @@
 {
   "name": "opencode-zellij",
   "type": "module",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "OpenCode plugin for Zellij-backed panes and workflow integrations.",
   "license": "MIT",
   "repository": {
