@@ -1,4 +1,3 @@
-import type { SessionStatus as OpenCodeSessionStatus } from '@opencode-ai/sdk'
 import process from 'node:process'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
@@ -52,20 +51,316 @@ export function sanitizeTitle(title: string, maxLength = 90): string {
   return cleaned
 }
 
-export interface TabTitleManagerOptions {
+// Helper functions for event parsing (mirrored from tab-title-events.ts)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function stringProperty(object: Record<string, unknown>, key: string): string | undefined {
+  const value = object[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function nestedStringProperty(object: Record<string, unknown>, key: string, nestedKey: string): string | undefined {
+  const nested = object[key]
+  if (!isRecord(nested))
+    return undefined
+  return stringProperty(nested, nestedKey)
+}
+
+function sessionStatusType(properties: Record<string, unknown>): 'idle' | 'busy' | 'retry' | undefined {
+  const status = properties.status
+  if (!isRecord(status))
+    return undefined
+  const type = status.type
+  if (type === 'idle' || type === 'busy')
+    return type
+  if (type === 'retry')
+    return 'retry'
+  return undefined
+}
+
+function inputRequestID(properties: Record<string, unknown>): string | undefined {
+  return stringProperty(properties, 'id') ?? stringProperty(properties, 'requestID') ?? stringProperty(properties, 'permissionID')
+}
+
+function inputState(properties: Record<string, unknown>): string | undefined {
+  return (stringProperty(properties, 'status') ?? stringProperty(properties, 'state') ?? stringProperty(properties, 'type'))?.toLowerCase()
+}
+
+function isResolvedInputState(state: string | undefined): boolean {
+  return state === 'approved' || state === 'denied' || state === 'rejected' || state === 'resolved' || state === 'replied'
+}
+
+function deletedSessionID(properties: Record<string, unknown>): string | undefined {
+  return nestedStringProperty(properties, 'info', 'id') ?? stringProperty(properties, 'sessionID')
+}
+
+interface SessionRecord {
+  directory: string | undefined
+  parentID: string | undefined
+}
+
+export class TabTitleIdentityModel {
+  ready: Promise<void>
   projectName: string
-  branchName?: string | undefined
+  branchName: string | undefined
+  private worktree: string
+  private readBranch: (worktree: string) => Promise<string>
+  private refreshGeneration = 0
+
+  constructor(options: {
+    projectName: string
+    worktree: string
+    readBranch: (worktree: string) => Promise<string>
+  }) {
+    this.projectName = options.projectName
+    this.worktree = options.worktree
+    this.readBranch = options.readBranch
+    this.ready = this.refreshBranch('initial')
+  }
+
+  async refreshBranch(_reason?: string): Promise<void> {
+    const generation = ++this.refreshGeneration
+    try {
+      const result = await this.readBranch(this.worktree)
+      if (generation !== this.refreshGeneration)
+        return
+      const trimmed = result.trim() || undefined
+      this.branchName = trimmed
+    }
+    catch (error) {
+      if (generation !== this.refreshGeneration)
+        return
+      debug('refreshBranch failed', errorMessage(error))
+      // keep previous branch
+    }
+  }
+
+  handleEvent(event: { type: string, properties?: unknown }): Promise<void> | void {
+    if (event.type === 'vcs.branch.updated') {
+      return this.refreshBranch('vcs.branch.updated')
+    }
+  }
+}
+
+export class TabTitleActivityModel {
+  status: 'idle' | 'running' | 'needs-input' = 'idle'
+  private worktreeDirectory: string
+  private sessions = new Map<string, SessionRecord>()
+  private scopedSessions = new Set<string>()
+  private runningSessions = new Set<string>()
+  private pendingInputs = new Map<string, string>()
+
+  constructor(options: { worktreeDirectory: string }) {
+    this.worktreeDirectory = options.worktreeDirectory
+  }
+
+  getSession(sessionID: string): SessionRecord | undefined {
+    return this.scopedSessions.has(sessionID) ? this.sessions.get(sessionID) : undefined
+  }
+
+  hasPendingInput(sessionID: string, requestID: string): boolean {
+    return this.pendingInputs.has(`${sessionID}:${requestID}`)
+  }
+
+  handleEvent(event: { type: string, properties?: unknown }): void {
+    if (!isRecord(event.properties))
+      return
+
+    const properties = event.properties
+
+    switch (event.type) {
+      case 'session.created':
+      case 'session.updated': {
+        const info = properties.info
+        if (isRecord(info)) {
+          const id = stringProperty(info, 'id')
+          if (id)
+            this.storeSession(id, info)
+        }
+        break
+      }
+      case 'session.status': {
+        const sessionID = stringProperty(properties, 'sessionID')
+        const statusType = sessionStatusType(properties)
+        if (sessionID && statusType) {
+          if (statusType === 'idle') {
+            if (this.runningSessions.has(sessionID)) {
+              this.runningSessions.delete(sessionID)
+              this.updateStatus()
+            }
+          }
+          else if (statusType === 'busy' || statusType === 'retry') {
+            if (this.scopedSessions.has(sessionID)) {
+              this.runningSessions.add(sessionID)
+              this.updateStatus()
+            }
+          }
+        }
+        break
+      }
+      case 'session.idle':
+      case 'session.error': {
+        const sessionID = stringProperty(properties, 'sessionID')
+        if (sessionID && this.runningSessions.has(sessionID)) {
+          this.runningSessions.delete(sessionID)
+          this.updateStatus()
+        }
+        break
+      }
+      case 'question.asked':
+      case 'permission.asked': {
+        const id = inputRequestID(properties)
+        const sessionID = stringProperty(properties, 'sessionID')
+        if (id && sessionID && this.scopedSessions.has(sessionID)) {
+          this.pendingInputs.set(`${sessionID}:${id}`, sessionID)
+          this.runningSessions.add(sessionID)
+          this.updateStatus()
+        }
+        break
+      }
+      case 'permission.updated': {
+        const id = inputRequestID(properties)
+        const sessionID = stringProperty(properties, 'sessionID')
+        const state = inputState(properties)
+        if (id && isResolvedInputState(state)) {
+          this.pendingInputs.delete(`${sessionID}:${id}`)
+          if (sessionID && this.runningSessions.has(sessionID))
+            this.runningSessions.add(sessionID)
+          this.updateStatus()
+        }
+        else if (id && sessionID && this.scopedSessions.has(sessionID)) {
+          this.pendingInputs.set(`${sessionID}:${id}`, sessionID)
+          this.runningSessions.add(sessionID)
+          this.updateStatus()
+        }
+        break
+      }
+      case 'question.replied':
+      case 'question.rejected':
+      case 'permission.replied': {
+        const id = inputRequestID(properties)
+        const sessionID = stringProperty(properties, 'sessionID')
+        if (id)
+          this.pendingInputs.delete(`${sessionID}:${id}`)
+        if (sessionID && this.runningSessions.has(sessionID))
+          this.runningSessions.add(sessionID)
+        this.updateStatus()
+        break
+      }
+      case 'session.deleted': {
+        const sessionID = deletedSessionID(properties)
+        if (sessionID) {
+          this.removeSessionAndDescendants(sessionID)
+          this.updateStatus()
+        }
+        break
+      }
+    }
+  }
+
+  private storeSession(id: string, info: Record<string, unknown>): void {
+    const directory = stringProperty(info, 'directory')
+    const parentID = stringProperty(info, 'parentID')
+    this.sessions.set(id, { directory, parentID })
+
+    const isDirectlyScoped = directory === this.worktreeDirectory
+    const isDescendantScoped = parentID ? this.scopedSessions.has(parentID) : false
+    const isKnown = this.scopedSessions.has(id)
+
+    if (isKnown || isDirectlyScoped || isDescendantScoped)
+      this.scopedSessions.add(id)
+  }
+
+  private removeSessionAndDescendants(rootID: string): void {
+    const toRemove = new Set<string>()
+    toRemove.add(rootID)
+
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const [id, session] of this.sessions) {
+        if (!toRemove.has(id) && session.parentID && toRemove.has(session.parentID)) {
+          toRemove.add(id)
+          changed = true
+        }
+      }
+    }
+
+    for (const id of toRemove) {
+      this.sessions.delete(id)
+      this.scopedSessions.delete(id)
+      this.runningSessions.delete(id)
+    }
+
+    for (const [key, sessionID] of [...this.pendingInputs.entries()]) {
+      if (toRemove.has(sessionID))
+        this.pendingInputs.delete(key)
+    }
+  }
+
+  private updateStatus(): void {
+    if (this.pendingInputs.size > 0)
+      this.status = 'needs-input'
+    else if (this.runningSessions.size > 0)
+      this.status = 'running'
+    else
+      this.status = 'idle'
+  }
+}
+
+export class TabTitleActor {
+  ready: Promise<void>
+  private identity: TabTitleIdentityModel
+  private activity: TabTitleActivityModel
+  private emojis: TabTitleEmojis
+
+  constructor(options: {
+    identity: TabTitleIdentityModel
+    activity: TabTitleActivityModel
+    emojis?: Partial<TabTitleEmojis> | undefined
+  }) {
+    this.identity = options.identity
+    this.activity = options.activity
+    this.emojis = { ...defaultTabTitleEmojis, ...options.emojis }
+    this.ready = this.identity.ready
+  }
+
+  get context() {
+    return {
+      projectName: this.identity.projectName,
+      branchName: this.identity.branchName,
+      status: this.activity.status,
+    }
+  }
+
+  get title(): string {
+    return formatTabTitle({
+      ...this.context,
+      emojis: this.emojis,
+    })
+  }
+
+  async handleEvent(event: { type: string, properties?: unknown }): Promise<void> {
+    this.activity.handleEvent(event)
+
+    const identityResult = this.identity.handleEvent(event)
+    if (identityResult instanceof Promise)
+      await identityResult
+  }
+}
+
+export interface TabTitleManagerOptions {
   cli?: TabTitleCli
   emojis?: Partial<TabTitleEmojis> | undefined
   debounceMs?: number
   retryInitialMs?: number
   retryMaxMs?: number
+  actor: TabTitleActor
 }
 
 export class TabTitleManager {
-  private readonly runningSessions = new Set<string>()
-  private readonly pendingInputs = new Map<string, string>()
-  private branchName: string | undefined
   private desiredTitle: string | undefined
   private lastSyncedTitle: string | undefined
   private debounceTimer: ReturnType<typeof setTimeout> | undefined
@@ -76,7 +371,6 @@ export class TabTitleManager {
   private readonly debounceMs: number
   private readonly retryInitialMs: number
   private readonly retryMaxMs: number
-  private readonly projectName: string
   private readonly cli: TabTitleCli
   private readonly emojis: TabTitleEmojis
   private readonly enabled: boolean
@@ -85,100 +379,23 @@ export class TabTitleManager {
   private originalTabTitleLoaded = false
   private originalTabTitlePromise: Promise<void> | undefined
   private destroyPromise: Promise<void> | undefined
+  private readonly actor: TabTitleActor
 
   constructor(options: TabTitleManagerOptions) {
-    this.projectName = options.projectName
-    this.branchName = options.branchName?.trim() || undefined
     this.cli = options.cli ?? new ZellijCli()
     this.emojis = { ...defaultTabTitleEmojis, ...options.emojis }
     this.debounceMs = options.debounceMs ?? 300
     this.retryInitialMs = options.retryInitialMs ?? 250
     this.retryMaxMs = options.retryMaxMs ?? 5_000
-    this.enabled = Boolean(process.env.ZELLIJ)
-  }
-
-  setBranch(branch: string | undefined): void {
-    const trimmed = branch?.trim() || undefined
-    if (this.branchName === trimmed)
-      return
-    this.branchName = trimmed
-    this.scheduleUpdate()
-  }
-
-  updateSessionStatus(sessionID: string, status: OpenCodeSessionStatus): void {
-    const isRunning = status.type === 'busy' || status.type === 'retry'
-    const wasRunning = this.runningSessions.has(sessionID)
-    if (isRunning) {
-      if (!wasRunning) {
-        this.runningSessions.add(sessionID)
-        this.scheduleUpdate()
-      }
-    }
-    else {
-      if (wasRunning) {
-        this.runningSessions.delete(sessionID)
-        this.scheduleUpdate()
-      }
-    }
-  }
-
-  markSessionIdle(sessionID: string): void {
-    if (this.runningSessions.delete(sessionID))
-      this.scheduleUpdate()
-  }
-
-  removeSession(sessionID: string): void {
-    const hadRunning = this.runningSessions.delete(sessionID)
-    let hadPendingInput = false
-    for (const [id, pendingSessionID] of this.pendingInputs) {
-      if (pendingSessionID === sessionID) {
-        this.pendingInputs.delete(id)
-        hadPendingInput = true
-      }
-    }
-
-    if (!hadRunning && !hadPendingInput)
-      return
-    this.scheduleUpdate()
-  }
-
-  markNeedsInput(id: string, sessionID: string): void {
-    if (this.pendingInputs.get(id) === sessionID)
-      return
-    this.pendingInputs.set(id, sessionID)
-    this.scheduleUpdate()
-  }
-
-  clearNeedsInput(id: string): void {
-    if (!this.pendingInputs.delete(id))
-      return
-    this.scheduleUpdate()
-  }
-
-  private get isBusy(): boolean {
-    return this.runningSessions.size > 0
-  }
-
-  private get needsInput(): boolean {
-    return this.pendingInputs.size > 0
-  }
-
-  private get status(): TabTitleStatus {
-    if (this.needsInput)
-      return 'needs-input'
-    if (this.isBusy)
-      return 'running'
-    return 'idle'
+    this.enabled = Boolean(process.env.ZELLIJ || process.env.ZELLIJ_SESSION_NAME)
+    this.actor = options.actor
   }
 
   private buildTitle(): string {
-    const context: TitleContext = {
-      projectName: this.projectName,
-      branchName: this.branchName,
-      status: this.status,
+    return sanitizeTitle(formatTabTitle({
+      ...this.actor.context,
       emojis: this.emojis,
-    }
-    return sanitizeTitle(formatTabTitle(context))
+    }))
   }
 
   getCurrentTitle(): string {

@@ -19,8 +19,8 @@ import { SessionCompletionNotificationQueue } from './zellij/completion-notifica
 import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './zellij/pane-watchdog.js'
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
-import { deletedSessionID, getInitialBranch, handleTabTitleEvent, shouldReadInitialBranch } from './zellij/tab-title-events.js'
-import { TabTitleManager } from './zellij/tab-title.js'
+import { deletedSessionID, getInitialBranch, shouldReadInitialBranch } from './zellij/tab-title-events.js'
+import { TabTitleActivityModel, TabTitleActor, TabTitleIdentityModel, TabTitleManager } from './zellij/tab-title.js'
 
 function createPtyTools(defaultCleanupExitedPaneOnRead: boolean) {
   return {
@@ -127,11 +127,27 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
 
     const workspaceRoot = getWorkspaceRoot(input)
     const projectName = getProjectName(workspaceRoot)
-    const branchName = config.tabTitle.enabled && shouldReadInitialBranch(process.env.ZELLIJ) ? await getInitialBranch(workspaceRoot) : undefined
-    const tabTitleManager = config.tabTitle.enabled
-      ? new TabTitleManager({
+    const identityModel = config.tabTitle.enabled
+      ? new TabTitleIdentityModel({
           projectName,
-          branchName,
+          worktree: workspaceRoot,
+          readBranch: async worktree => shouldReadInitialBranch(process.env.ZELLIJ || process.env.ZELLIJ_SESSION_NAME) ? (await getInitialBranch(worktree)) ?? '' : '',
+        })
+      : undefined
+    const activityModel = config.tabTitle.enabled
+      ? new TabTitleActivityModel({
+          worktreeDirectory: workspaceRoot,
+        })
+      : undefined
+    const actor = identityModel && activityModel
+      ? new TabTitleActor({
+          identity: identityModel,
+          activity: activityModel,
+        })
+      : undefined
+    const tabTitleManager = config.tabTitle.enabled && actor
+      ? new TabTitleManager({
+          actor,
           debounceMs: config.tabTitle.debounceMs,
           emojis: {
             idle: config.tabTitle.emojiIdle,
@@ -176,6 +192,9 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       : undefined)
 
     // Best-effort initial render; no-op when not inside a real Zellij pane.
+    if (actor) {
+      await actor.ready
+    }
     tabTitleManager?.renderImmediate()
       .catch(error => debug('initial tab title render failed', errorMessage(error)))
 
@@ -186,9 +205,15 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       async event(input) {
         const event: OpenCodeEventLike = input.event
 
-        if (tabTitleManager)
-          await handleTabTitleEvent(tabTitleManager, event)
-
+        if (actor && tabTitleManager) {
+          await actor.handleEvent(event)
+          if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
+            await tabTitleManager.destroy()
+          }
+          else {
+            tabTitleManager.scheduleUpdate()
+          }
+        }
         if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
           completionNotifications?.clearAll()
           completionNotifications?.dispose()
