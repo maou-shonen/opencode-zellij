@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 
 export interface ToolContext {
@@ -43,7 +44,7 @@ export async function loadPlugin(inputOverrides: { directory?: string, worktree?
 
 export function context(): ToolContext {
   return {
-    sessionID: `integration-${Date.now()}`,
+    sessionID: `integration-${randomUUID()}`,
     messageID: 'integration-message',
     agent: 'integration',
     directory: process.cwd(),

@@ -4,6 +4,13 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
+function zellijID(value: number | string | undefined): number | undefined {
+  if (value === undefined)
+    return undefined
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? parsed : undefined
+}
+
 export interface ZellijTabInfo {
   tab_id?: number | string | undefined
   name?: string | undefined
@@ -45,8 +52,8 @@ export async function currentPaneTabId(): Promise<number | undefined> {
     return undefined
   }
 
-  const pane = panes.find(p => !p.is_plugin && (Number(p.id) === parsedPaneId || Number(p.pane_id) === parsedPaneId))
-  return pane?.tab_id !== undefined ? Number(pane.tab_id) : undefined
+  const pane = panes.find(p => !p.is_plugin && (zellijID(p.id) === parsedPaneId || zellijID(p.pane_id) === parsedPaneId))
+  return zellijID(pane?.tab_id)
 }
 
 export async function listTabs(): Promise<ZellijTabInfo[]> {
@@ -64,7 +71,7 @@ export async function currentTabTitle(): Promise<string | undefined> {
   const tabId = await currentPaneTabId()
   const tabs = await listTabs()
   if (tabId !== undefined) {
-    const tab = tabs.find(t => Number(t.tab_id) === tabId)
+    const tab = tabs.find(t => zellijID(t.tab_id) === tabId)
     return tab?.name ?? tab?.title
   }
 

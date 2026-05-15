@@ -10,8 +10,9 @@ tabTitleTui('real Zellij tab-title TUI integration', () => {
   it('restores tab title after disposed event', async () => {
     const originalTabTitle = await currentTabTitle()
     const tabId = await currentPaneTabId()
+    expect(tabId).toBeDefined()
     if (tabId === undefined)
-      return
+      throw new Error('Expected current pane tab id in TUI E2E test')
 
     const uniqueOriginalTitle = `opencode-zellij-restore-${Date.now()}`
     await renameTabById(tabId, uniqueOriginalTitle)
