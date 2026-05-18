@@ -363,6 +363,7 @@ export interface TabTitleManagerOptions {
 export class TabTitleManager {
   private desiredTitle: string | undefined
   private lastSyncedTitle: string | undefined
+  private syncGeneration = 0
   private debounceTimer: ReturnType<typeof setTimeout> | undefined
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private retryAttempt = 0
@@ -437,29 +438,34 @@ export class TabTitleManager {
   private async syncDesiredTitle(): Promise<void> {
     if (!this.enabled || this.destroyed)
       return
+    const generation = this.syncGeneration
     await this.ensureOriginalTabTitle()
-    if (this.destroyed)
+    if (this.destroyed || generation !== this.syncGeneration)
       return
     if (this.syncInFlight)
       return this.syncPromise
 
     this.syncInFlight = true
-    this.syncPromise = this.runTitleSync()
+    this.syncPromise = this.runTitleSync(generation)
     return this.syncPromise
   }
 
-  private async runTitleSync(): Promise<void> {
+  private async runTitleSync(generation: number): Promise<void> {
     try {
-      while (this.desiredTitle && this.desiredTitle !== this.lastSyncedTitle) {
+      while (generation === this.syncGeneration && this.desiredTitle && this.desiredTitle !== this.lastSyncedTitle) {
         const title = this.desiredTitle
         try {
           await this.cli.renameTab(title)
+          if (generation !== this.syncGeneration || this.destroyed)
+            return
           this.lastSyncedTitle = title
           this.retryAttempt = 0
           this.clearRetryTimer()
         }
         catch (cause) {
           debug('Failed to rename Zellij tab.', cause)
+          if (generation !== this.syncGeneration || this.destroyed)
+            break
           this.scheduleRetry()
           break
         }
@@ -531,6 +537,8 @@ export class TabTitleManager {
     if (this.destroyed)
       return this.destroyPromise ?? Promise.resolve()
     this.destroyed = true
+    this.syncGeneration += 1
+    this.desiredTitle = undefined
     this.clearDebounceTimer()
     this.clearRetryTimer()
 

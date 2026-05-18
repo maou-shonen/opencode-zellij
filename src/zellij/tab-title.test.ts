@@ -394,4 +394,40 @@ describe('TabTitleManager', () => {
       expect(calls).toEqual(['🟢 my-project', 'original-name'])
     })
   })
+
+  it('does not apply queued title syncs after destroy begins restoring the original title', async () => {
+    await withZellijEnv('1', async () => {
+      const calls: string[] = []
+      let resolveFirstRename: (() => void) | undefined
+      const blockingCli: TabTitleCli = {
+        async renameTab(title: string) {
+          calls.push(title)
+          if (calls.length === 1) {
+            await new Promise<void>((resolve) => {
+              resolveFirstRename = resolve
+            })
+          }
+        },
+        async currentTabTitle() {
+          return 'original-name'
+        },
+      }
+      const { actor, manager } = await createHarness({
+        cli: blockingCli,
+      })
+
+      const renderPromise = manager.renderImmediate()
+      await new Promise(r => setTimeout(r, 10))
+      await actor.handleEvent(sessionCreated('s1'))
+      await actor.handleEvent(sessionStatus('s1', 'busy'))
+      manager.scheduleUpdate()
+
+      const destroyPromise = manager.destroy()
+      resolveFirstRename?.()
+
+      await Promise.all([renderPromise, destroyPromise])
+
+      expect(calls).toEqual(['🟢 my-project', 'original-name'])
+    })
+  })
 })

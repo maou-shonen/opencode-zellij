@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
-function zellijID(value: number | string | undefined): number | undefined {
+export function zellijID(value: number | string | undefined): number | undefined {
   if (value === undefined)
     return undefined
   const parsed = Number(value)
@@ -33,6 +33,17 @@ export async function runZellij(args: string[], timeoutMs = 5_000): Promise<stri
   return result.stdout ?? ''
 }
 
+export async function listPanes(): Promise<ZellijPaneInfo[]> {
+  const output = await runZellij(['action', 'list-panes', '--json'])
+  try {
+    const parsed = JSON.parse(output)
+    return Array.isArray(parsed) ? parsed as ZellijPaneInfo[] : []
+  }
+  catch {
+    return []
+  }
+}
+
 export async function currentPaneTabId(): Promise<number | undefined> {
   const paneId = process.env.ZELLIJ_PANE_ID
   if (!paneId)
@@ -42,16 +53,7 @@ export async function currentPaneTabId(): Promise<number | undefined> {
   if (!Number.isInteger(parsedPaneId))
     return undefined
 
-  const output = await runZellij(['action', 'list-panes', '--json'])
-  let panes: ZellijPaneInfo[] = []
-  try {
-    const parsed = JSON.parse(output)
-    panes = Array.isArray(parsed) ? parsed as ZellijPaneInfo[] : []
-  }
-  catch {
-    return undefined
-  }
-
+  const panes = await listPanes()
   const pane = panes.find(p => !p.is_plugin && (zellijID(p.id) === parsedPaneId || zellijID(p.pane_id) === parsedPaneId))
   return zellijID(pane?.tab_id)
 }

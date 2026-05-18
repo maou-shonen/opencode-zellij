@@ -73,10 +73,10 @@ jobs:
           exit 1
 
       - name: Run integration tests
-        run: bun run test:integration
+        run: mise run test-integration
 
-      - name: Run E2E tests
-        run: env -u ZELLIJ -u ZELLIJ_PANE_ID RUN_ZELLIJ_E2E=1 mise run test-e2e-run
+      - name: Run E2E tests in Zellij pane
+        run: mise run test-e2e-ci-pane
 
       - name: Stop Zellij session
         if: always()

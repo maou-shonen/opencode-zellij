@@ -29,18 +29,14 @@ run = [
 description = "Run opt-in real Zellij integration tests"
 run = "bun run test:integration"
 
-[tasks.test-e2e-run]
-description = "Run the E2E run-environment suite"
-run = "bun run test:e2e:run"
-
-[tasks.test-e2e-tui]
-description = "Run the E2E TUI suite"
-run = "bun run test:e2e:tui"
-
 [tasks.test-e2e]
-description = "Run the default E2E suite"
+description = "Run the full E2E suite"
 run = "bun run test:e2e"
 
+[tasks.test-e2e-ci-pane]
+description = "Run full E2E inside a live Zellij pane"
+run = "bun run test:e2e:ci-pane"
+
 [tasks.test-e2e-act]
-description = "Run the GitHub Actions E2E job with act"
+description = "Replay the GitHub Actions E2E job with act"
 run = "bun run test:e2e:act"
