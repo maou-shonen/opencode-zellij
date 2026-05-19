@@ -22,7 +22,13 @@ class FakeChild extends EventEmitter {
   }
 }
 
-function createManager(spawned: FakeChild[], notifications: Array<{ sessionId: string; reason: string }>): { manager: SubscriberManager, sessions: SessionManager } {
+function createManager(
+  spawned: FakeChild[],
+  notifications: Array<{ sessionId: string, reason: string }>,
+  options: {
+    paneExists?: (paneId: string) => Promise<boolean | undefined>
+  } = {},
+): { manager: SubscriberManager, sessions: SessionManager } {
   const sessions = new SessionManager()
   const manager = new SubscriberManager(sessions, 10, {
     spawn: () => {
@@ -31,6 +37,7 @@ function createManager(spawned: FakeChild[], notifications: Array<{ sessionId: s
       return child as any
     },
     dumpScreen: async () => 'boot line',
+    paneExists: options.paneExists ?? (async () => true),
     closePane: async () => {},
     terminalTailLines: 2,
     lifecycleHooks: {
@@ -40,6 +47,26 @@ function createManager(spawned: FakeChild[], notifications: Array<{ sessionId: s
     },
   })
   return { manager, sessions }
+}
+
+async function waitFor(assertion: () => void, timeoutMs = 100): Promise<void> {
+  const startedAt = Date.now()
+  let lastError: unknown
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      assertion()
+      return
+    }
+    catch (error) {
+      lastError = error
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+  }
+
+  if (lastError)
+    throw lastError
+  assertion()
 }
 
 describe('SubscriberManager lifecycle handling', () => {
@@ -101,5 +128,140 @@ describe('SubscriberManager lifecycle handling', () => {
     expect(updated.status).toBe('terminal')
     expect(updated.tombstone?.reason).toBe('pane_closed')
     expect(notifications).toEqual([{ sessionId: session.id, reason: 'pane_closed' }])
+  })
+
+  it('marks sessions terminal when the subscriber exits after the pane is gone', async () => {
+    const spawned: FakeChild[] = []
+    const notifications: Array<{ sessionId: string; reason: string }> = []
+    const { manager, sessions } = createManager(spawned, notifications, {
+      paneExists: async () => false,
+    })
+    const session = sessions.create({
+      paneId: 'terminal_3',
+      title: 'subscriber exit',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+    spawned[0]!.emit('exit', 0, null)
+
+    await waitFor(() => {
+      const updated = sessions.get(session.id)
+      expect(updated.status).toBe('terminal')
+      expect(updated.tombstone?.reason).toBe('subscriber_exit')
+      expect(notifications).toEqual([{ sessionId: session.id, reason: 'subscriber_exit' }])
+    })
+  })
+
+  it('marks sessions terminal when the subscriber errors after the pane is gone', async () => {
+    const spawned: FakeChild[] = []
+    const notifications: Array<{ sessionId: string; reason: string }> = []
+    const { manager, sessions } = createManager(spawned, notifications, {
+      paneExists: async () => false,
+    })
+    const session = sessions.create({
+      paneId: 'terminal_4',
+      title: 'subscriber error',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+    spawned[0]!.emit('error', new Error('subscribe failed'))
+
+    await waitFor(() => {
+      const updated = sessions.get(session.id)
+      expect(updated.status).toBe('terminal')
+      expect(updated.tombstone?.reason).toBe('subscriber_error')
+      expect(notifications).toEqual([{ sessionId: session.id, reason: 'subscriber_error' }])
+    })
+  })
+
+  it('does not misreport completion when the subscriber exits but the pane still exists', async () => {
+    const spawned: FakeChild[] = []
+    const notifications: Array<{ sessionId: string; reason: string }> = []
+    const { manager, sessions } = createManager(spawned, notifications, {
+      paneExists: async () => true,
+    })
+    const session = sessions.create({
+      paneId: 'terminal_5',
+      title: 'pane still exists',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+    spawned[0]!.emit('exit', 0, null)
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const updated = sessions.get(session.id)
+    expect(updated.status).toBe('running')
+    expect(updated.tombstone).toBeNull()
+    expect(notifications).toEqual([])
+  })
+
+  it('keeps sessions non-terminal and records diagnostics when pane verification is inconclusive', async () => {
+    const spawned: FakeChild[] = []
+    const notifications: Array<{ sessionId: string; reason: string }> = []
+    const { manager, sessions } = createManager(spawned, notifications, {
+      paneExists: async () => undefined,
+    })
+    const session = sessions.create({
+      paneId: 'terminal_6',
+      title: 'pane unknown',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+    spawned[0]!.emit('exit', 0, null)
+
+    await waitFor(() => {
+      expect(manager.stderr(session.id).join('\n')).toContain('could not confirm whether pane terminal_6 still exists')
+    })
+
+    const updated = sessions.get(session.id)
+    expect(updated.status).toBe('running')
+    expect(updated.tombstone).toBeNull()
+    expect(notifications).toEqual([])
+  })
+
+  it('keeps sessions non-terminal and records diagnostics when pane verification fails', async () => {
+    const spawned: FakeChild[] = []
+    const notifications: Array<{ sessionId: string; reason: string }> = []
+    const { manager, sessions } = createManager(spawned, notifications, {
+      paneExists: async () => {
+        throw new Error('list-panes unavailable')
+      },
+    })
+    const session = sessions.create({
+      paneId: 'terminal_7',
+      title: 'pane verification failed',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+    spawned[0]!.emit('error', new Error('subscribe failed'))
+
+    await waitFor(() => {
+      expect(manager.stderr(session.id).join('\n')).toContain('could not verify pane terminal_7: list-panes unavailable')
+    })
+
+    const updated = sessions.get(session.id)
+    expect(updated.status).toBe('unknown')
+    expect(updated.tombstone).toBeNull()
+    expect(notifications).toEqual([])
   })
 })

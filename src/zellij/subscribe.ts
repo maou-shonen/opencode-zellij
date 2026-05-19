@@ -34,6 +34,7 @@ export interface SubscriberLifecycleHooks {
 export interface SubscriberManagerDependencies {
   spawn?: typeof spawn | undefined
   dumpScreen?: typeof zellijCli.dumpScreen | undefined
+  paneExists?: typeof zellijCli.paneExists | undefined
   closePane?: typeof zellijCli.closePane | undefined
   lifecycleHooks?: SubscriberLifecycleHooks | undefined
   terminalTailLines?: number | undefined
@@ -109,6 +110,7 @@ export class SubscriberManager {
   private readonly startingSessions = new Map<string, Promise<void>>()
   private readonly spawnProcess: typeof spawn
   private readonly dumpScreen: typeof zellijCli.dumpScreen
+  private readonly paneExists: typeof zellijCli.paneExists
   private readonly closePane: typeof zellijCli.closePane
   private lifecycleHooks: SubscriberLifecycleHooks | undefined
   private readonly terminalTailLines: number
@@ -120,6 +122,7 @@ export class SubscriberManager {
   ) {
     this.spawnProcess = dependencies.spawn ?? spawn
     this.dumpScreen = dependencies.dumpScreen ?? zellijCli.dumpScreen
+    this.paneExists = dependencies.paneExists ?? zellijCli.paneExists
     this.closePane = dependencies.closePane ?? zellijCli.closePane
     this.lifecycleHooks = dependencies.lifecycleHooks
     this.terminalTailLines = dependencies.terminalTailLines ?? 200
@@ -346,10 +349,7 @@ export class SubscriberManager {
     const state = this.subscribers.get(sessionId)
     if (!state || state.child !== child)
       return
-    state.stderr.push(...splitLines(chunk))
-    if (state.stderr.length > maxStderrLines) {
-      state.stderr = state.stderr.slice(state.stderr.length - maxStderrLines)
-    }
+    this.appendStderr(state, ...splitLines(chunk))
   }
 
   private handleSubscriberExit(sessionId: string, child: ChildProcessWithoutNullStreams): void {
@@ -361,19 +361,64 @@ export class SubscriberManager {
     state.child = null
     state.lastExitedAt = new Date().toISOString()
     if (this.sessions.find(sessionId)?.status !== 'terminal')
-      state.stderr.push(`[zellij-pty] subscriber exited at ${state.lastExitedAt}; last buffered output is retained.`)
-    if (state.stderr.length > maxStderrLines) {
-      state.stderr = state.stderr.slice(state.stderr.length - maxStderrLines)
-    }
+      this.appendStderr(state, `[zellij-pty] subscriber exited at ${state.lastExitedAt}; last buffered output is retained.`)
+    void this.reconcileSubscriberTermination(sessionId, state, 'subscriber_exit')
   }
 
   private handleSubscriberError(sessionId: string, child: ChildProcessWithoutNullStreams, error: Error): void {
     const state = this.subscribers.get(sessionId)
     if (state?.child === child) {
-      state.stderr.push(error.message)
+      this.appendStderr(state, error.message)
       state.child = null
       state.lastExitedAt = new Date().toISOString()
-      this.sessions.updateStatus(sessionId, 'unknown')
+      const session = this.sessions.find(sessionId)
+      if (session?.status !== 'terminal')
+        this.sessions.updateStatus(sessionId, 'unknown')
+      void this.reconcileSubscriberTermination(sessionId, state, 'subscriber_error')
+    }
+  }
+
+  private appendStderr(state: SubscriberState, ...lines: string[]): void {
+    state.stderr.push(...lines)
+    if (state.stderr.length > maxStderrLines)
+      state.stderr = state.stderr.slice(state.stderr.length - maxStderrLines)
+  }
+
+  private async reconcileSubscriberTermination(
+    sessionId: string,
+    state: SubscriberState,
+    reason: Extract<SessionTerminalReason, 'subscriber_exit' | 'subscriber_error'>,
+  ): Promise<void> {
+    const session = this.sessions.find(sessionId)
+    if (!session || session.status === 'terminal' || this.subscribers.get(sessionId) !== state || state.child)
+      return
+
+    let paneExists: boolean | undefined
+    try {
+      paneExists = await this.paneExists(session.paneId)
+    }
+    catch (error) {
+      const latestState = this.subscribers.get(sessionId)
+      const latestSession = this.sessions.find(sessionId)
+      if (!latestState || latestState !== state || latestState.child || !latestSession || latestSession.status === 'terminal')
+        return
+      this.appendStderr(latestState, `[zellij-pty] ${reason} reconciliation could not verify pane ${latestSession.paneId}: ${errorMessage(error)}`)
+      return
+    }
+
+    const latestState = this.subscribers.get(sessionId)
+    const latestSession = this.sessions.find(sessionId)
+    if (!latestState || latestState !== state || latestState.child || !latestSession || latestSession.status === 'terminal')
+      return
+
+    if (paneExists === false) {
+      this.markSessionTerminal(sessionId, reason)
+      unregisterPaneFromWatchdog(sessionId)
+      return
+    }
+
+    if (paneExists === undefined) {
+      this.appendStderr(latestState, `[zellij-pty] ${reason} reconciliation could not confirm whether pane ${latestSession.paneId} still exists; leaving session non-terminal.`)
     }
   }
 
