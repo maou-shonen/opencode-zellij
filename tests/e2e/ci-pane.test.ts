@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
+import { parsePaneId } from '../../src/utils/ids.js'
 import { runZellij, listPanes } from './support/zellij.js'
 
 // ---------------------------------------------------------------------------
@@ -74,10 +75,10 @@ describe('CI pane orchestration', () => {
         'bash', innerScript, paneLog, resultFile,
       ], 10_000)
 
-      createdPaneId = parseCreatedPaneId(spawnOutput)
+      createdPaneId = parsePaneId(spawnOutput)
       expect(createdPaneId).toBeDefined()
       if (!createdPaneId) {
-        throw new Error(`Could not parse pane ID from new-pane output: ${spawnOutput || '<empty>'}`)
+        throw new Error(`Could not parse pane ID from new-pane output: ${JSON.stringify(spawnOutput)}`)
       }
       console.log(`Created CI pane: ${createdPaneId}`)
 
@@ -118,7 +119,10 @@ describe('CI pane orchestration', () => {
           catch {
             // swallow
           }
-          throw new Error(`Pane ${createdPaneId} disappeared before writing result`)
+          throw new Error(
+            `Pane ${createdPaneId} disappeared before writing result\n`
+            + `  raw new-pane output: ${JSON.stringify(spawnOutput)}`,
+          )
         }
 
         await new Promise(r => setTimeout(r, 1_000))
@@ -174,11 +178,6 @@ describe('CI pane orchestration', () => {
 // ---------------------------------------------------------------------------
 // File-local helpers (replaces the exported functions from old runner)
 // ---------------------------------------------------------------------------
-
-function parseCreatedPaneId(output: string): string | undefined {
-  const match = output.match(/\b(?:terminal_)?(\d+)\b/)
-  return match?.[1] ? `terminal_${match[1]}` : undefined
-}
 
 function normalizePaneId(value: number | string | undefined): string | undefined {
   if (value === undefined)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import process from 'node:process'
 import { integrationTimeoutMs } from './support/env.js'
+import { verifySpawnedTerminalPaneIdentity } from './support/spawned-pane.js'
 import { currentPaneTabId, listPanes, runZellij, zellijID } from './support/zellij.js'
 
 // Pane-required TUI gating: the test body requires ZELLIJ, ZELLIJ_PANE_ID,
@@ -19,22 +20,41 @@ if (hasPaneContext) {
       if (tabId === undefined)
         throw new Error('Expected current pane tab id in pane TUI context')
 
+      const panesBefore = await listPanes()
+      const paneIdsBeforeSpawn = new Set(
+        panesBefore.flatMap((pane) => {
+          const paneId = zellijID(pane.id) ?? zellijID(pane.pane_id)
+          return paneId === undefined ? [] : [paneId]
+        }),
+      )
+
       // Spawn a pane that stays alive long enough for the test cycle.
-      // `new-pane` returns the created pane ID as "terminal_<id>" which we
-      // parse directly instead of diffing the pane list.
+      // `new-pane` should return the created pane ID as `terminal_<id>`.
+      // We still sanity-check that parsed id against the pre-spawn pane list
+      // so ambiguous output hard-fails instead of false-positive passing.
       const marker = `pane-tui-${Date.now()}`
-      const spawnOutput = await runZellij([
-        'action', 'new-pane',
-        '--', 'bash', '-c', `echo ${marker}; sleep 30`,
-      ])
-      const paneIdMatch = spawnOutput.match(/^(?:terminal|plugin)_(\d+)/)
-      const spawnedPaneId = paneIdMatch ? Number(paneIdMatch[1]) : undefined
-      expect(spawnedPaneId).toBeDefined()
-      if (spawnedPaneId === undefined)
-        throw new Error('Could not parse spawned pane ID from new-pane output')
+      const currentPaneId = process.env.ZELLIJ_PANE_ID?.trim()
 
       let spawnSucceeded = false
+      let safeCleanupPaneId: number | undefined
+      let spawnOutput = ''
+      let spawnedPaneIdStr = '<unparsed>'
+      let spawnedPaneId: number | undefined
       try {
+        spawnOutput = await runZellij([
+          'action', 'new-pane',
+          '--', 'bash', '-c', `echo ${marker}; sleep 30`,
+        ])
+
+        const spawnedPaneIdentity = verifySpawnedTerminalPaneIdentity({
+          spawnOutput,
+          currentPaneId,
+          paneIdsBeforeSpawn,
+        })
+
+        spawnedPaneIdStr = spawnedPaneIdentity.normalizedPaneId
+        spawnedPaneId = spawnedPaneIdentity.numericPaneId
+
         // Give Zellij a moment to settle the new pane
         await new Promise(resolve => setTimeout(resolve, 1000))
 
@@ -42,24 +62,38 @@ if (hasPaneContext) {
         const spawnedPaneInfo = panesAfter.find(p => zellijID(p.id) === spawnedPaneId || zellijID(p.pane_id) === spawnedPaneId)
         expect(spawnedPaneInfo).toBeDefined()
         if (!spawnedPaneInfo)
-          throw new Error(`Spawned pane ${spawnedPaneId} not found in pane list`)
+          throw new Error(`Spawned pane ${spawnedPaneIdStr} (numeric ${spawnedPaneId}) not found in pane list`)
 
         // Core pane-context invariant: the spawned pane shares the same tab as
         // the original pane (new-pane opens in the current tab by default).
         const spawnedTabId = zellijID(spawnedPaneInfo.tab_id)
         expect(spawnedTabId).toBe(tabId)
 
+        safeCleanupPaneId = spawnedPaneId
         spawnSucceeded = true
       }
       finally {
-        // Best-effort cleanup: close the spawned pane by ID.
-        try {
-          await runZellij(['action', 'close-pane', '--pane-id', String(spawnedPaneId)])
-          await new Promise(resolve => setTimeout(resolve, 800))
+        // Cleanup guard: only close panes that were safely identified as the
+        // newly spawned terminal pane. Unsafe / ambiguous parses hard-fail the
+        // test and skip destructive cleanup so the current / outer pane cannot
+        // be closed by mistake.
+        if (safeCleanupPaneId === undefined) {
+          console.warn(
+            '[safety] Skipping close-pane because the spawned terminal pane was not safely identified\n'
+            + `  current pane id: ${JSON.stringify(currentPaneId ?? '<missing>')}\n`
+            + `  parsed pane id: ${JSON.stringify(spawnedPaneIdStr)}\n`
+            + `  raw new-pane output: ${JSON.stringify(spawnOutput)}`,
+          )
         }
-        catch {
-          // Swallow cleanup errors — the spawned pane will close on
-          // its own after the sleep(30) expires.
+        else {
+          try {
+            await runZellij(['action', 'close-pane', '--pane-id', String(safeCleanupPaneId)])
+            await new Promise(resolve => setTimeout(resolve, 800))
+          }
+          catch {
+            // Swallow cleanup errors — the spawned pane will close on
+            // its own after the sleep(30) expires.
+          }
         }
       }
 

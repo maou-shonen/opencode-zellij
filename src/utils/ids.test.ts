@@ -23,6 +23,12 @@ describe('pane id helpers', () => {
     expect(() => parsePaneId('created pane\n')).toThrow(/Unable to parse/)
   })
 
+  it('rejects plugin_* pane ids (terminal-only)', () => {
+    // `plugin_<id>` should not be accepted as a terminal pane id
+    expect(() => parsePaneId('plugin_42')).toThrow(/Unable to parse/)
+    expect(() => parsePaneId('plugin_1\n')).toThrow(/Unable to parse/)
+  })
+
   it('creates short zellij pty session ids', () => {
     expect(createSessionId()).toMatch(/^zpty_[a-f0-9]{10}$/)
   })
