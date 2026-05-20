@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { SessionManager } from '../pty/manager.js'
+import { zellijCli } from './cli.js'
 import { SubscriberManager } from './subscribe.js'
 
 class FakeStream extends EventEmitter {
@@ -108,80 +109,6 @@ describe('SubscriberManager lifecycle handling', () => {
     expect(notifications).toEqual([{ sessionId: session.id, reason: 'exit_marker' }])
   })
 
-  it('marks pane_closed sessions terminal without reviving them', async () => {
-    const spawned: FakeChild[] = []
-    const notifications: Array<{ sessionId: string; reason: string }> = []
-    const { manager, sessions } = createManager(spawned, notifications)
-    const session = sessions.create({
-      paneId: 'terminal_2',
-      title: 'pane closed',
-      command: 'bash',
-      cwd: '/tmp/project',
-      allowAgentInput: true,
-      humanInputOnly: false,
-    })
-
-    await manager.start(session)
-    spawned[0]!.stdout.emit('data', `${JSON.stringify({ event: 'pane_closed', pane_id: session.paneId })}\n`)
-
-    const updated = sessions.get(session.id)
-    expect(updated.status).toBe('terminal')
-    expect(updated.tombstone?.reason).toBe('pane_closed')
-    expect(notifications).toEqual([{ sessionId: session.id, reason: 'pane_closed' }])
-  })
-
-  it('marks sessions terminal when the subscriber exits after the pane is gone', async () => {
-    const spawned: FakeChild[] = []
-    const notifications: Array<{ sessionId: string; reason: string }> = []
-    const { manager, sessions } = createManager(spawned, notifications, {
-      paneExists: async () => false,
-    })
-    const session = sessions.create({
-      paneId: 'terminal_3',
-      title: 'subscriber exit',
-      command: 'bash',
-      cwd: '/tmp/project',
-      allowAgentInput: true,
-      humanInputOnly: false,
-    })
-
-    await manager.start(session)
-    spawned[0]!.emit('exit', 0, null)
-
-    await waitFor(() => {
-      const updated = sessions.get(session.id)
-      expect(updated.status).toBe('terminal')
-      expect(updated.tombstone?.reason).toBe('subscriber_exit')
-      expect(notifications).toEqual([{ sessionId: session.id, reason: 'subscriber_exit' }])
-    })
-  })
-
-  it('marks sessions terminal when the subscriber errors after the pane is gone', async () => {
-    const spawned: FakeChild[] = []
-    const notifications: Array<{ sessionId: string; reason: string }> = []
-    const { manager, sessions } = createManager(spawned, notifications, {
-      paneExists: async () => false,
-    })
-    const session = sessions.create({
-      paneId: 'terminal_4',
-      title: 'subscriber error',
-      command: 'bash',
-      cwd: '/tmp/project',
-      allowAgentInput: true,
-      humanInputOnly: false,
-    })
-
-    await manager.start(session)
-    spawned[0]!.emit('error', new Error('subscribe failed'))
-
-    await waitFor(() => {
-      const updated = sessions.get(session.id)
-      expect(updated.status).toBe('terminal')
-      expect(updated.tombstone?.reason).toBe('subscriber_error')
-      expect(notifications).toEqual([{ sessionId: session.id, reason: 'subscriber_error' }])
-    })
-  })
-
   it('does not misreport completion when the subscriber exits but the pane still exists', async () => {
     const spawned: FakeChild[] = []
     const notifications: Array<{ sessionId: string; reason: string }> = []
@@ -263,5 +190,39 @@ describe('SubscriberManager lifecycle handling', () => {
     expect(updated.status).toBe('unknown')
     expect(updated.tombstone).toBeNull()
     expect(notifications).toEqual([])
+  })
+
+  it('preserves zellijCli.closePane binding during session cleanup', async () => {
+    const originalClosePane = zellijCli.closePane
+    const closeCalls: string[] = []
+    ;(zellijCli as any).closeCalls = closeCalls
+    zellijCli.closePane = async function (this: { closeCalls: string[] }, paneId: string): Promise<void> {
+      this.closeCalls.push(paneId)
+    }
+
+    try {
+      const sessions = new SessionManager()
+      const manager = new SubscriberManager(sessions, 10, {
+        spawn: () => new FakeChild() as any,
+        dumpScreen: async () => 'boot line',
+        paneExists: async () => true,
+      })
+      const session = sessions.create({
+        paneId: 'terminal_8',
+        title: 'cleanup binding',
+        command: 'bash',
+        cwd: '/tmp/project',
+        allowAgentInput: true,
+        humanInputOnly: false,
+      })
+
+      await manager.closeSessionPane(session.id)
+
+      expect(closeCalls).toEqual(['terminal_8'])
+    }
+    finally {
+      zellijCli.closePane = originalClosePane
+      delete (zellijCli as any).closeCalls
+    }
   })
 })

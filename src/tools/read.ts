@@ -53,7 +53,7 @@ export async function executeZellijPtyRead(args: ReadToolArgs, dependencies: Rea
   const nextAdviceApi = dependencies.nextAdvice ?? nextAdvice
   const readOutputSnapshotApi = dependencies.readOutputSnapshot ?? readOutputSnapshot
   const validateGrepApi = dependencies.validateGrep ?? validateGrep
-  const paneExistsApi = dependencies.paneExists ?? zellijCli.paneExists
+  const paneExistsApi = dependencies.paneExists ?? (paneId => zellijCli.paneExists(paneId))
 
   const session = sessionManagerApi.get(args.id)
   const grepError = validateGrepApi(args.grep)

@@ -14,6 +14,15 @@ interface PluginModule {
 }
 
 const builtPluginPath = pathToFileURL(join(process.cwd(), 'dist/index.mjs')).href
+const ptyToolNames = [
+  'zellij_pty_kill',
+  'zellij_pty_list',
+  'zellij_pty_read',
+  'zellij_pty_request_sudo',
+  'zellij_pty_spawn',
+  'zellij_pty_write',
+]
+const ptyToolNamesWithoutSudo = ptyToolNames.filter(name => name !== 'zellij_pty_request_sudo')
 
 describe('built plugin integration load', () => {
   let tempRoot = ''
@@ -62,25 +71,100 @@ describe('built plugin integration load', () => {
     }
   }
 
-  it('loads built plugin and exposes the hook/tool surface', async () => {
-    await writeProjectConfig('{ "tabTitle": { "enabled": true }, "autoUpdate": false }')
-
-    const hooks = await loadBuiltPlugin({
+  function clientWithStatus(): Record<string, unknown> {
+    return {
       session: {
         status: async () => ({ data: {} }),
       },
-    })
+    }
+  }
+
+  function toolContext(): {
+    sessionID: string
+    messageID: string
+    agent: string
+    directory: string
+    worktree: string
+    abort: AbortSignal
+    metadata: () => void
+    ask: () => never
+  } {
+    return {
+      sessionID: 'integration-session',
+      messageID: 'integration-message',
+      agent: 'integration',
+      directory: projectRoot(),
+      worktree: projectRoot(),
+      abort: new AbortController().signal,
+      metadata() {},
+      ask() {
+        throw new Error('ask is not available in built plugin integration tests')
+      },
+    }
+  }
+
+  it('loads built plugin and exposes the hook/tool surface', async () => {
+    await writeProjectConfig('{ "tabTitle": { "enabled": true }, "autoUpdate": false }')
+
+    const hooks = await loadBuiltPlugin(clientWithStatus())
 
     try {
       expect(typeof hooks.event).toBe('function')
-      expect(Object.keys(hooks.tool).sort()).toEqual([
-        'zellij_pty_kill',
-        'zellij_pty_list',
-        'zellij_pty_read',
-        'zellij_pty_request_sudo',
-        'zellij_pty_spawn',
-        'zellij_pty_write',
-      ])
+      expect(Object.keys(hooks.tool).sort()).toEqual(ptyToolNames)
+    }
+    finally {
+      await disposeQuietly(hooks)
+    }
+  })
+
+  it('omits built PTY tools when pty.enabled is false', async () => {
+    await writeProjectConfig('{ "pty": { "enabled": false }, "autoUpdate": false }')
+
+    const hooks = await loadBuiltPlugin(clientWithStatus())
+
+    try {
+      expect(typeof hooks.event).toBe('function')
+      expect(hooks.tool).toEqual({})
+    }
+    finally {
+      await disposeQuietly(hooks)
+    }
+  })
+
+  it('hides the built sudo tool when sudoPane is hide', async () => {
+    await writeProjectConfig('{ "pty": { "sudoPane": "hide" }, "autoUpdate": false }')
+
+    const hooks = await loadBuiltPlugin(clientWithStatus())
+
+    try {
+      expect(Object.keys(hooks.tool).sort()).toEqual(ptyToolNamesWithoutSudo)
+    }
+    finally {
+      await disposeQuietly(hooks)
+    }
+  })
+
+  it('keeps the built sudo tool visible but denies execution when sudoPane is deny', async () => {
+    await writeProjectConfig('{ "pty": { "sudoPane": "deny" }, "autoUpdate": false }')
+
+    const hooks = await loadBuiltPlugin(clientWithStatus())
+
+    try {
+      expect(Object.keys(hooks.tool).sort()).toEqual(ptyToolNames)
+      const requestSudoTool = hooks.tool.zellij_pty_request_sudo
+      expect(requestSudoTool).toBeDefined()
+      if (!requestSudoTool)
+        throw new Error('Expected built sudo tool to be present')
+
+      await expect(
+        requestSudoTool.execute(
+          {
+            summary: 'Integration deny smoke.',
+            scripts: [{ command: 'echo deny-smoke', description: 'Smoke check disabled sudo pane behavior.' }],
+          },
+          toolContext(),
+        ),
+      ).rejects.toThrow(/sudo pane is disabled by zellij-pty config/)
     }
     finally {
       await disposeQuietly(hooks)

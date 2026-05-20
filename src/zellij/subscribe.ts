@@ -121,9 +121,9 @@ export class SubscriberManager {
     dependencies: SubscriberManagerDependencies = {},
   ) {
     this.spawnProcess = dependencies.spawn ?? spawn
-    this.dumpScreen = dependencies.dumpScreen ?? zellijCli.dumpScreen
-    this.paneExists = dependencies.paneExists ?? zellijCli.paneExists
-    this.closePane = dependencies.closePane ?? zellijCli.closePane
+    this.dumpScreen = dependencies.dumpScreen ?? (paneId => zellijCli.dumpScreen(paneId))
+    this.paneExists = dependencies.paneExists ?? (paneId => zellijCli.paneExists(paneId))
+    this.closePane = dependencies.closePane ?? (paneId => zellijCli.closePane(paneId))
     this.lifecycleHooks = dependencies.lifecycleHooks
     this.terminalTailLines = dependencies.terminalTailLines ?? 200
   }

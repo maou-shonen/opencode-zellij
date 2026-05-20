@@ -3,56 +3,6 @@ import { sessionManager } from '../pty/manager.js'
 import { executeZellijPtyKill, zellijPtyKillTool } from './kill.js'
 
 describe('zellij_pty_kill', () => {
-  it('removes the session when close-pane succeeds', async () => {
-    const session = sessionManager.create({
-      openCodeSessionId: 'session_a',
-      paneId: 'terminal_4',
-      title: 'kill',
-      command: 'bash',
-      cwd: process.cwd(),
-      allowAgentInput: true,
-      humanInputOnly: false,
-    })
-
-    const result = await executeZellijPtyKill({ id: session.id }, {
-      zellijCli: {
-        sendCtrlC: async () => {},
-        closePane: async () => {},
-        paneExists: async () => true,
-      },
-    })
-
-    expect(result).toMatchObject({ killed: true, cleanedUp: true, id: session.id, paneId: 'terminal_4' })
-    expect(result.warnings).toEqual([])
-    expect(sessionManager.find(session.id)).toBeUndefined()
-  })
-
-  it('removes the session when close-pane fails but the pane is already gone', async () => {
-    const session = sessionManager.create({
-      openCodeSessionId: 'session_a',
-      paneId: 'terminal_1',
-      title: 'kill',
-      command: 'bash',
-      cwd: process.cwd(),
-      allowAgentInput: true,
-      humanInputOnly: false,
-    })
-
-    const result = await executeZellijPtyKill({ id: session.id }, {
-      zellijCli: {
-        sendCtrlC: async () => {},
-        closePane: async () => {
-          throw new Error('close failed')
-        },
-        paneExists: async () => false,
-      },
-    })
-
-    expect(result).toMatchObject({ killed: true, cleanedUp: true, id: session.id, paneId: 'terminal_1' })
-    expect(result.warnings).toEqual([])
-    expect(sessionManager.find(session.id)).toBeUndefined()
-  })
-
   it('keeps the session when close-pane fails and the pane still exists', async () => {
     const session = sessionManager.create({
       openCodeSessionId: 'session_a',

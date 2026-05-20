@@ -127,6 +127,52 @@ integration('real Zellij tab-title run integration', () => {
     })
   }, integrationTimeoutMs)
 
+  it('does not change the real tab title when tabTitle.enabled is false', async () => {
+    await withSessionOnlyTarget(async () => {
+      await withTempGitProject(async (projectRoot: string) => {
+        const originalTabTitle = await currentTabTitle()
+        const uniqueOriginalTitle = `opencode-zellij-disabled-${Date.now()}`
+        await runZellij(['action', 'rename-tab', uniqueOriginalTitle])
+
+        const renamedTitle = await waitForTabTitleValue(title => title === uniqueOriginalTitle)
+        expect(renamedTitle).toBe(uniqueOriginalTitle)
+
+        const hooks = await loadPlugin({
+          directory: projectRoot,
+          worktree: projectRoot,
+          client: defaultClient(),
+        })
+
+        try {
+          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'disabled-title-session', directory: projectRoot } } })
+          await sendEvent(hooks, { type: 'session.status', properties: { sessionID: 'disabled-title-session', status: { type: 'busy' } } })
+          await sendEvent(hooks, { type: 'question.asked', properties: { id: 'disabled-title-question', sessionID: 'disabled-title-session' } })
+          await sendEvent(hooks, { type: 'session.idle', properties: { sessionID: 'disabled-title-session' } })
+
+          const stableTitle = await observeStableTabTitle({
+            expected: uniqueOriginalTitle,
+            timeoutMs: 5_000,
+            stabilityMs: 1_000,
+          })
+
+          expect(stableTitle.ok).toBe(true)
+          expect(stableTitle.title).toBe(uniqueOriginalTitle)
+        }
+        finally {
+          await disposeQuietly(hooks)
+          if (originalTabTitle !== undefined) {
+            try {
+              await runZellij(['action', 'rename-tab', originalTabTitle])
+            }
+            catch {
+              // best-effort — restore the pre-test title when possible
+            }
+          }
+        }
+      }, { configContent: '{ "tabTitle": { "enabled": false }, "autoUpdate": false }' })
+    })
+  }, integrationTimeoutMs)
+
   it('keeps status changes from altering project and branch', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const hooks = await loadPlugin({

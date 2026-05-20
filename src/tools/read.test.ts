@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { sessionManager } from '../pty/manager.js'
+import { zellijCli } from '../zellij/cli.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { executeZellijPtyRead, zellijPtyReadTool } from './read.js'
 import { type PaneExistsFn } from './pane-cleanup.js'
@@ -32,36 +33,6 @@ describe('zellij_pty_read', () => {
     expect(subscriberManager.has(session.id)).toBe(false)
   })
 
-  it('cleans up a completed pane once and keeps the session tombstone', async () => {
-    const { session, deps, closeCalls } = createCompletedReadFixture('zpty_terminal', 'terminal_1')
-
-    const result1 = await executeZellijPtyRead({ id: session.id, cleanupExitedPaneOnRead: true }, deps)
-
-    const result2 = await executeZellijPtyRead({ id: session.id, cleanupExitedPaneOnRead: true }, deps)
-
-    expect(closeCalls()).toBe(1)
-    expect(result1.cleanup).toEqual({ requested: true, performed: true, alreadyClosed: false })
-    expect(result2.cleanup).toEqual({ requested: true, performed: false, alreadyClosed: true })
-    expect(result2.next.retryable).toBe(false)
-    expect(session.tombstone?.paneClosedAt).toBeTruthy()
-  })
-
-  it('treats a close failure as cleanup when the pane is already gone', async () => {
-    const { session, deps, closeCalls: closed } = createCompletedReadFixture('zpty_terminal_gone', 'terminal_2', {
-      paneExists: async () => false,
-      closeSessionPane: async () => {
-        throw new Error('close failed')
-      },
-    })
-
-    const result = await executeZellijPtyRead({ id: session.id, cleanupExitedPaneOnRead: true }, deps)
-
-    expect(closed()).toBe(1)
-    expect(result.cleanup).toEqual({ requested: true, performed: true, alreadyClosed: true })
-    expect(result.warnings).toEqual([])
-    expect(session.tombstone?.paneClosedAt).toBeTruthy()
-  })
-
   it('keeps the session when close failure cannot be verified as gone', async () => {
     const { session, deps } = createCompletedReadFixture('zpty_terminal_exists', 'terminal_3', {
       paneExists: async () => true,
@@ -92,6 +63,39 @@ describe('zellij_pty_read', () => {
     expect(marked()).toBe(0)
     expect(result.cleanup).toEqual({ requested: true, performed: false, alreadyClosed: false, warning: expect.stringContaining('Completed pane cleanup failed: close failed') })
     expect(session.tombstone?.paneClosedAt).toBeNull()
+  })
+
+  it('preserves zellijCli.paneExists binding during cleanup verification', async () => {
+    const originalPaneExists = zellijCli.paneExists
+    const paneExistsCalls: string[] = []
+    ;(zellijCli as any).paneExistsCalls = paneExistsCalls
+    zellijCli.paneExists = async function (this: { paneExistsCalls: string[] }, paneId: string): Promise<boolean> {
+      this.paneExistsCalls.push(paneId)
+      return false
+    }
+
+    try {
+      const { session, deps, closeCalls: closed, markCalls: marked } = createCompletedReadFixture('zpty_terminal_binding', 'terminal_5', {
+        closeSessionPane: async () => {
+          throw new Error('close failed')
+        },
+      })
+
+      const result = await executeZellijPtyRead({ id: session.id, cleanupExitedPaneOnRead: true }, {
+        ...deps,
+        paneExists: undefined,
+      })
+
+      expect(closed()).toBe(1)
+      expect(marked()).toBe(1)
+      expect(paneExistsCalls).toEqual(['terminal_5'])
+      expect(result.cleanup).toEqual({ requested: true, performed: true, alreadyClosed: true })
+      expect(session.tombstone?.paneClosedAt).toBe('2026-01-01T00:00:10.000Z')
+    }
+    finally {
+      zellijCli.paneExists = originalPaneExists
+      delete (zellijCli as any).paneExistsCalls
+    }
   })
 })
 

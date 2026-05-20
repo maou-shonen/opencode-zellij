@@ -6,17 +6,6 @@ import ZellijPtyPlugin, { createZellijPtyPlugin, showUpdateToast, startAutoUpdat
 import type { UpdateResult } from './auto-update.js'
 import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
 
-const ptyToolNames = [
-  'zellij_pty_kill',
-  'zellij_pty_list',
-  'zellij_pty_read',
-  'zellij_pty_request_sudo',
-  'zellij_pty_spawn',
-  'zellij_pty_write',
-]
-
-const ptyToolNamesWithoutSudo = ptyToolNames.filter(name => name !== 'zellij_pty_request_sudo')
-
 describe('ZellijPtyPlugin', () => {
   let tempRoot = ''
   let originalXdgConfigHome: string | undefined
@@ -47,28 +36,6 @@ describe('ZellijPtyPlugin', () => {
 
   it('exports an OpenCode plugin function', () => {
     expect(typeof ZellijPtyPlugin).toBe('function')
-  })
-
-  it('registers pty tools by default', async () => {
-    const plugin = await ZellijPtyPlugin(pluginInput(join(tempRoot, 'project')), {})
-
-    expect(Object.keys(plugin.tool ?? {}).sort()).toEqual(ptyToolNames)
-  })
-
-  it('does not register pty tools when pty is disabled', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "pty": { "enabled": false } }')
-    const plugin = await ZellijPtyPlugin(pluginInput(project), {})
-
-    expect(plugin.tool).toEqual({})
-  })
-
-  it('hides sudo tool when sudoPane is hide', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "pty": { "sudoPane": "hide" } }')
-    const plugin = await ZellijPtyPlugin(pluginInput(project), {})
-
-    expect(Object.keys(plugin.tool ?? {}).sort()).toEqual(ptyToolNamesWithoutSudo)
   })
 
   it('starts auto-update during plugin initialization without waiting for events', async () => {
@@ -209,14 +176,6 @@ describe('ZellijPtyPlugin', () => {
     expect(prompts).toHaveLength(1)
     expect(toasts).toHaveLength(1)
     expect(output.parts).toEqual([{ type: 'text', text: 'hello' }])
-  })
-
-  it('keeps sudo tool visible when sudoPane is deny', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "pty": { "sudoPane": "deny" } }')
-    const plugin = await ZellijPtyPlugin(pluginInput(project), {})
-
-    expect(Object.keys(plugin.tool ?? {})).toContain('zellij_pty_request_sudo')
   })
 
   it('does not call client.session.status during startup or relevant event handling when tab title enabled', async () => {

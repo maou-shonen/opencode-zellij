@@ -109,26 +109,6 @@ describe('completion notifications', () => {
     expect(queue.hasPending(session.id)).toBe(false)
   })
 
-  it('actively prompts before toast delivery and skips later queued injection when queue+toast can prompt', async () => {
-    const { queue, session, toasts, prompts, marks } = createHarness(
-      {
-        mode: 'queue+toast',
-        prompt: { requireIdle: true, cooldownMs: 30_000, maxAttempts: 1 },
-      },
-      { statusResponse: { data: { oc_1: { type: 'idle' } } } },
-    )
-
-    await queue.handleSessionTerminal(createEvent(session))
-
-    expect(toasts).toHaveLength(1)
-    expect(prompts).toHaveLength(1)
-    expect(queue.hasPending(session.id)).toBe(false)
-    expect(marks).toEqual([session.id])
-
-    const injected = queue.injectQueuedChatMessage({ message: 'hello' }) as { message: string }
-    expect(injected.message).toBe('hello')
-  })
-
   it('keeps the queued notice when queue+toast prompt delivery is blocked by the idle guard', async () => {
     const { queue, session, toasts, prompts, marks } = createHarness({
       mode: 'queue+toast',

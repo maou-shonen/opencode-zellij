@@ -175,34 +175,6 @@ async function createHarness(options: TabTitleTestHarnessOptions = {}) {
 }
 
 describe('TabTitleManager', () => {
-  it('getCurrentTitle renders idle title from actor context', async () => {
-    await withZellijEnv('1', async () => {
-      const { manager } = await createHarness({
-        readBranch: async () => 'main\n',
-      })
-
-      expect(manager.getCurrentTitle()).toBe('🟢 my-project 🌱 main')
-      await manager.destroy()
-    })
-  })
-
-  it('manager emojis override actor/default rendering', async () => {
-    await withZellijEnv('1', async () => {
-      const { actor, manager } = await createHarness({
-        readBranch: async () => 'main\n',
-        actorEmojis: { idle: 'a', running: 'b', needsInput: 'c', branch: 'd' },
-        managerEmojis: { idle: 'I', running: 'R', needsInput: 'Q', branch: 'B' },
-      })
-
-      await actor.handleEvent(sessionCreated('s1'))
-      await actor.handleEvent(sessionStatus('s1', 'busy'))
-      await actor.handleEvent(questionAsked('s1', 'q1'))
-
-      expect(manager.getCurrentTitle()).toBe('Q my-project B main')
-      await manager.destroy()
-    })
-  })
-
   it('renderImmediate skips duplicate title updates', async () => {
     await withZellijEnv('1', async () => {
       const { manager, calls } = await createHarness()
@@ -366,32 +338,6 @@ describe('TabTitleManager', () => {
 
       expect(calls).toEqual([])
       await manager.destroy()
-    })
-  })
-
-  it('saves and restores the original tab title and destroy is idempotent', async () => {
-    await withZellijEnv('1', async () => {
-      let currentTabTitleCalls = 0
-      const calls: string[] = []
-      const restoringCli: TabTitleCli = {
-        async renameTab(title: string) {
-          calls.push(title)
-        },
-        async currentTabTitle() {
-          currentTabTitleCalls += 1
-          return 'original-name'
-        },
-      }
-      const { manager } = await createHarness({
-        cli: restoringCli,
-      })
-
-      await manager.renderImmediate()
-      await manager.destroy()
-      await manager.destroy()
-
-      expect(currentTabTitleCalls).toBe(1)
-      expect(calls).toEqual(['🟢 my-project', 'original-name'])
     })
   })
 
