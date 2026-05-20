@@ -6,7 +6,10 @@ node = "latest"
 zellij = "latest"
 
 [hooks]
-postinstall = "lefthook install"
+postinstall = [
+  { task = "install" },
+  "lefthook install"
+]
 
 [tasks.install]
 description = "Install project dependencies"
