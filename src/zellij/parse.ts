@@ -140,12 +140,55 @@ function findTabName(value: unknown, tabId: number | undefined): string | undefi
   return undefined
 }
 
+function activeTabNameProperty(object: Record<string, unknown>): string | undefined {
+  if (object.active !== true || object.is_plugin === true)
+    return undefined
+  const name = stringProperty(object, ['name', 'title'])
+  return typeof name === 'string' ? name : undefined
+}
+
+function findActiveTabName(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findActiveTabName(item)
+      if (found !== undefined)
+        return found
+    }
+    return undefined
+  }
+
+  if (typeof value !== 'object' || value === null)
+    return undefined
+
+  const object = value as Record<string, unknown>
+  const name = activeTabNameProperty(object)
+  if (name !== undefined)
+    return name
+
+  for (const nested of Object.values(object)) {
+    const found = findActiveTabName(nested)
+    if (found !== undefined)
+      return found
+  }
+  return undefined
+}
+
 export function parseTabName(listTabsJson: string, tabId: number | undefined): string | undefined {
   try {
     return findTabName(JSON.parse(listTabsJson), tabId)
   }
   catch (error) {
     debug('parseTabName failed', errorMessage(error))
+    return undefined
+  }
+}
+
+export function parseActiveTabName(listTabsJson: string): string | undefined {
+  try {
+    return findActiveTabName(JSON.parse(listTabsJson))
+  }
+  catch (error) {
+    debug('parseActiveTabName failed', errorMessage(error))
     return undefined
   }
 }

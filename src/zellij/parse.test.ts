@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseCurrentPaneTabId, parsePaneExists, parseTabName } from './parse.js'
+import { parseActiveTabName, parseCurrentPaneTabId, parsePaneExists, parseTabName } from './parse.js'
 
 describe('parseCurrentPaneTabId', () => {
   it('parses the current pane tab id from list-panes JSON', () => {
@@ -98,5 +98,31 @@ describe('parseTabName', () => {
       { tab_id: 1, name: 'inactive-tab', active: false },
       { tab_id: 2, name: 'active-tab', active: true },
     ]), undefined)).toBeUndefined()
+  })
+})
+
+describe('parseActiveTabName', () => {
+  it('parses the active non-plugin tab name from list-tabs JSON', () => {
+    expect(parseActiveTabName(JSON.stringify([
+      { tab_id: 1, name: 'inactive-tab', active: false },
+      { tab_id: 2, title: 'active-tab', active: true },
+    ]))).toBe('active-tab')
+  })
+
+  it('parses nested active tab names and ignores plugin tabs', () => {
+    expect(parseActiveTabName(JSON.stringify({
+      tabs: [
+        { tab_id: 1, name: 'plugin-tab', active: true, is_plugin: true },
+        { tabId: '2', name: 'real-active-tab', active: true, is_plugin: false },
+      ],
+    }))).toBe('real-active-tab')
+  })
+
+  it('returns undefined for missing active tabs or malformed JSON', () => {
+    expect(parseActiveTabName(JSON.stringify([
+      { tab_id: 1, name: 'inactive-tab', active: false },
+    ]))).toBeUndefined()
+    expect(parseActiveTabName('not json')).toBeUndefined()
+    expect(parseActiveTabName(undefined as unknown as string)).toBeUndefined()
   })
 })

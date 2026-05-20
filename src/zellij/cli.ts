@@ -4,7 +4,7 @@ import process from 'node:process'
 import { promisify } from 'node:util'
 import { parsePaneId } from '../utils/ids.js'
 import { buildCommandArgv } from '../utils/shell-args.js'
-import { parseCurrentPaneTabId, parsePaneExists, parseTabName } from './parse.js'
+import { parseActiveTabName, parseCurrentPaneTabId, parsePaneExists, parseTabName } from './parse.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -23,6 +23,8 @@ interface ZellijResult {
   stdout: string
   stderr: string
 }
+
+type ZellijRunner = (actionArgs: string[], options?: ZellijRunOptions) => Promise<ZellijResult>
 
 export function zellijCommandArgs(actionArgs: string[]): string[] {
   const sessionName = process.env.ZELLIJ_SESSION_NAME?.trim()
@@ -87,21 +89,23 @@ async function runZellij(actionArgs: string[], options: ZellijRunOptions = {}): 
 }
 
 export class ZellijCli {
+  constructor(private readonly run: ZellijRunner = runZellij) {}
+
   async newPane(options: NewPaneOptions): Promise<string> {
-    const result = await runZellij(buildNewPaneActionArgs(options))
+    const result = await this.run(buildNewPaneActionArgs(options))
     return parsePaneId(result.stdout)
   }
 
   async writeChars(paneId: string, data: string): Promise<void> {
-    await runZellij(zellijActionArgs('write-chars', ['--pane-id', paneId, data]))
+    await this.run(zellijActionArgs('write-chars', ['--pane-id', paneId, data]))
   }
 
   async sendCtrlC(paneId: string): Promise<void> {
-    await runZellij(zellijActionArgs('send-keys', ['--pane-id', paneId, 'Ctrl c']))
+    await this.run(zellijActionArgs('send-keys', ['--pane-id', paneId, 'Ctrl c']))
   }
 
   async closePane(paneId: string): Promise<void> {
-    await runZellij(zellijActionArgs('close-pane', ['--pane-id', paneId]))
+    await this.run(zellijActionArgs('close-pane', ['--pane-id', paneId]))
   }
 
   closePaneSync(paneId: string): void {
@@ -114,11 +118,11 @@ export class ZellijCli {
   }
 
   async focusPane(paneId: string): Promise<void> {
-    await runZellij(zellijActionArgs('focus-pane-id', [paneId]))
+    await this.run(zellijActionArgs('focus-pane-id', [paneId]))
   }
 
   async dumpScreen(paneId: string): Promise<string> {
-    const result = await runZellij(zellijActionArgs('dump-screen', ['--pane-id', paneId, '--full']), { timeoutMs: 10_000 })
+    const result = await this.run(zellijActionArgs('dump-screen', ['--pane-id', paneId, '--full']), { timeoutMs: 10_000 })
     return result.stdout
   }
 
@@ -127,12 +131,12 @@ export class ZellijCli {
     if (!paneId)
       return undefined
 
-    const result = await runZellij(zellijActionArgs('list-panes', ['--json']), { timeoutMs: 5_000 })
+    const result = await this.run(zellijActionArgs('list-panes', ['--json']), { timeoutMs: 5_000 })
     return parseCurrentPaneTabId(result.stdout, paneId)
   }
 
   async paneExists(paneId: string): Promise<boolean | undefined> {
-    const result = await runZellij(zellijActionArgs('list-panes', ['--json']), { timeoutMs: 5_000 })
+    const result = await this.run(zellijActionArgs('list-panes', ['--json']), { timeoutMs: 5_000 })
     return parsePaneExists(result.stdout, paneId)
   }
 
@@ -140,18 +144,24 @@ export class ZellijCli {
     const tabId = await this.currentPaneTabId()
     if (tabId === undefined && process.env.ZELLIJ)
       throw new Error(`Could not resolve Zellij tab id for pane ${process.env.ZELLIJ_PANE_ID ?? '<missing>'}`)
-    await runZellij(tabId === undefined ? buildRenameTabActionArgs(title) : buildRenameTabActionArgs(title, { tabId }))
+    await this.run(tabId === undefined ? buildRenameTabActionArgs(title) : buildRenameTabActionArgs(title, { tabId }))
   }
 
   async currentTabTitle(): Promise<string | undefined> {
     const paneId = process.env.ZELLIJ_PANE_ID
-    if (!paneId)
-      return undefined
+    if (!paneId) {
+      if (!process.env.ZELLIJ_SESSION_NAME?.trim())
+        return undefined
+
+      const result = await this.run(zellijActionArgs('list-tabs', ['--json']), { timeoutMs: 5_000 })
+      return parseActiveTabName(result.stdout)
+    }
 
     const tabId = await this.currentPaneTabId()
     if (tabId === undefined)
       return undefined
-    const result = await runZellij(zellijActionArgs('list-tabs', ['--json']), { timeoutMs: 5_000 })
+
+    const result = await this.run(zellijActionArgs('list-tabs', ['--json']), { timeoutMs: 5_000 })
     return parseTabName(result.stdout, tabId)
   }
 }

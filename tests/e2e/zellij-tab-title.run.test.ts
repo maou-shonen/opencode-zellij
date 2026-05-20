@@ -1,11 +1,132 @@
 import { expect, it } from 'bun:test'
 import { join } from 'node:path'
+import process from 'node:process'
 import { integration, integrationTimeoutMs } from './support/env.js'
 import { defaultClient, disposeQuietly, loadPlugin, sendEvent } from './support/plugin.js'
 import { observeStableTabTitle, waitForTabTitleValue, titleBody } from './support/assertions.js'
 import { runGit, withTempGitProject } from './support/temp-project.js'
+import { currentTabTitle, runZellij } from './support/zellij.js'
+
+async function withSessionOnlyTarget<T>(run: () => Promise<T>): Promise<T> {
+  const previousZellij = process.env.ZELLIJ
+  const previousPaneId = process.env.ZELLIJ_PANE_ID
+
+  delete process.env.ZELLIJ
+  delete process.env.ZELLIJ_PANE_ID
+
+  try {
+    return await run()
+  }
+  finally {
+    if (previousZellij === undefined)
+      delete process.env.ZELLIJ
+    else
+      process.env.ZELLIJ = previousZellij
+
+    if (previousPaneId === undefined)
+      delete process.env.ZELLIJ_PANE_ID
+    else
+      process.env.ZELLIJ_PANE_ID = previousPaneId
+  }
+}
 
 integration('real Zellij tab-title run integration', () => {
+  it('restores the original tab title after disposed in session-only control', async () => {
+    await withSessionOnlyTarget(async () => {
+      // ── Checkpoint 1: session-only environment active ──
+      // The production ZellijCli.currentTabTitle() checks ZELLIJ_PANE_ID
+      // absence to select the session-only path (list-tabs --json, active tab
+      // lookup via findActiveTabName).  If ZELLIJ_PANE_ID were still set,
+      // the restore capture would use the pane-resolve path instead.
+      // Explicitly assert the env is in session-only configuration.
+      expect(process.env.ZELLIJ_SESSION_NAME?.trim()).toBeTruthy()
+      expect(process.env.ZELLIJ).toBeUndefined()
+      expect(process.env.ZELLIJ_PANE_ID).toBeUndefined()
+
+      await withTempGitProject(async (projectRoot: string) => {
+        // Capture the pre-test tab title for best-effort cleanup after the
+        // test body completes.  This is read *after* env is in session-only
+        // mode so it matches the tab scope the test operates on.
+        const originalTabTitle = await currentTabTitle()
+
+        // ── Checkpoint 2: seed unique original title ──
+        // Use a raw Zellij action to rename the active tab to a timestamped
+        // unique string before plugin load.  This proves the restore target
+        // is a real Zellij tab state — not a helper-side expected string —
+        // and gives the test an unambiguous value to verify after dispose.
+        const uniqueOriginalTitle = `opencode-zellij-run-restore-${Date.now()}`
+        await runZellij(['action', 'rename-tab', uniqueOriginalTitle])
+
+        const renamedTitle = await waitForTabTitleValue(title => title === uniqueOriginalTitle)
+        expect(renamedTitle).toBe(uniqueOriginalTitle)
+
+        // ── Checkpoint 3: real built plugin → dynamic title ──
+        // loadPlugin() imports the production build (dist/index.mjs) and
+        // instantiates the real TabTitleManager.  TabTitleManager's
+        // constructor calls saveOriginalTabTitle() → ZellijCli.currentTabTitle()
+        // which captures the seeded original under session-only rules.
+        // Sending session.created + session.status then triggers the
+        // production render path and writes a dynamic project title.
+        const hooks = await loadPlugin({
+          directory: projectRoot,
+          worktree: projectRoot,
+          client: defaultClient(),
+        })
+
+        try {
+          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'session-only-restore', directory: projectRoot } } })
+          await sendEvent(hooks, { type: 'session.status', properties: { sessionID: 'session-only-restore', status: { type: 'busy' } } })
+
+          const dynamicTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(
+            title?.startsWith('⚡')
+            && title.includes('project')
+            && title.includes('main')
+            && title !== uniqueOriginalTitle,
+          ))
+          expect(dynamicTitle).toBeDefined()
+          // Explicitly assert the active tab title changed away from the
+          // seeded original — proves the plugin path produced a different
+          // value and that restore is not a tautology.
+          expect(dynamicTitle).not.toBe(uniqueOriginalTitle)
+
+          // ── Checkpoint 4: server.instance.disposed → restore ──
+          // The production event handler routes disposed to
+          // TabTitleManager.destroy(), which calls
+          // restoreOriginalTabTitle() → ZellijCli.renameTab(title)
+          // with the captured originalTabTitle.  Observe the tab title
+          // returns to the exact uniqueOriginalTitle string and remains
+          // stable for the stability window.
+          await sendEvent(hooks, { type: 'server.instance.disposed', properties: {} })
+
+          const result = await observeStableTabTitle({
+            expected: uniqueOriginalTitle,
+            timeoutMs: 8_000,
+            stabilityMs: 1_000,
+          })
+          expect(result.ok).toBe(true)
+          // Confirm the restored value is exactly the seeded original,
+          // not a substring or a best-effort partial match.
+          expect(result.title).toBe(uniqueOriginalTitle)
+        }
+        finally {
+          // ── Checkpoint 5: cleanup must not mask restore failure ──
+          // All restore assertions (checkpoint 4) run *before* this finally
+          // block.  If the production restore path failed, the assertions
+          // would fail first — cleanup cannot hide a missing restore.
+          await disposeQuietly(hooks)
+          if (originalTabTitle !== undefined) {
+            try {
+              await runZellij(['action', 'rename-tab', originalTabTitle])
+            }
+            catch {
+              // best-effort — restore the pre-test title when possible
+            }
+          }
+        }
+      })
+    })
+  }, integrationTimeoutMs)
+
   it('keeps status changes from altering project and branch', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const hooks = await loadPlugin({
