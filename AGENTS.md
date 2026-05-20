@@ -24,22 +24,20 @@ mise run build
 mise run check
 mise run test-integration
 mise run test-e2e
-mise run test-e2e-act
 ```
 
 ## Validation expectations
 
 - `mise run check` is the default quality gate. It covers typecheck, lint, unit tests, and build.
-- `mise run test-e2e` runs the full real-environment E2E suite, including TUI coverage.
+- `mise run test-e2e` is the single public E2E entrypoint. Locally it replays the GitHub Actions `e2e` job with `act`; inside GitHub Actions or an `act` runner it runs the pane-orchestration E2E coverage, and the pane itself runs the native real-environment E2E suite including TUI coverage.
 - `mise run test-integration` is targeted real Zellij integration coverage for plugin loading, pane lifecycle, cleanup, and tool wiring changes.
-- `mise run test-e2e-act` replays the GitHub Actions `e2e` job locally when CI-parity validation matters.
 - Zellij-backed tests require running inside Zellij or setting `ZELLIJ_SESSION_NAME` to a live session.
 
 ## CI and release flow
 
 - `.github/workflows/ci.yml`
   - `Check` runs `mise run check`
-  - `E2E` starts a dedicated Zellij session, then runs `mise run test-integration` and `mise run test-e2e`
+  - `E2E` starts a dedicated Zellij session, then runs `mise run test-integration` and `mise run test-e2e`; in runner environments that single task still keeps pane orchestration covered while the pane runs the native E2E suite.
 - `.github/workflows/preview.yml` publishes preview packages for branch pushes and pull requests.
 - `.github/workflows/publish.yml` publishes `v*` tags, runs checks, publishes to npm, then syncs `package.json` back to `main`.
 - Prefer `act` over bespoke Docker runners for local CI reproduction.

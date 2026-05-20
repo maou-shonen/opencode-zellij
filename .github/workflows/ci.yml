@@ -75,8 +75,8 @@ jobs:
       - name: Run integration tests
         run: mise run test-integration
 
-      - name: Run E2E tests in Zellij pane
-        run: mise run test-e2e-ci-pane
+      - name: Run E2E tests
+        run: mise run test-e2e
 
       - name: Stop Zellij session
         if: always()

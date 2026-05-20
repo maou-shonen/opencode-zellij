@@ -14,10 +14,11 @@ import { runZellij, listPanes } from './support/zellij.js'
 //
 // The pane payload is a short inline bash script (temp file) with positional
 // args so quoting stays clean.  CI_PANE_INNER_COMMAND can override the inner
-// command for negative-test failure injection.
+// command for negative-test failure injection, but the default stays on the
+// native E2E command so runner-side `mise run test-e2e` does not recurse.
 // ---------------------------------------------------------------------------
 
-const innerCommand = process.env.CI_PANE_INNER_COMMAND ?? 'mise run test-e2e'
+const innerCommand = process.env.CI_PANE_INNER_COMMAND ?? 'bun run test:e2e'
 const paneTimeoutMs = Number(process.env.CI_PANE_TIMEOUT_MS ?? 480_000)
 
 describe('CI pane orchestration', () => {
