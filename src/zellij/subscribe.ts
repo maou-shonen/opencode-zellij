@@ -8,7 +8,7 @@ import { sessionManager } from '../pty/manager.js'
 import { RingBuffer } from '../pty/ring-buffer.js'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { parseExitCodeMarker } from '../utils/exit-code.js'
+import { parseExitCodeMarkerLines } from '../utils/exit-code.js'
 import { ensureZellijTarget, zellijCli, zellijCommandArgs } from './cli.js'
 import { unregisterPaneFromWatchdog } from './pane-watchdog.js'
 
@@ -336,13 +336,11 @@ export class SubscriberManager {
     if (!session.exitCodeToken)
       return
 
-    for (const line of lines) {
-      const marker = parseExitCodeMarker(line)
-      if (!marker || marker.token !== session.exitCodeToken)
-        continue
-      this.markSessionTerminal(sessionId, 'exit_marker', { exitCode: marker.exitCode })
+    const marker = parseExitCodeMarkerLines(lines)
+    if (!marker || marker.token !== session.exitCodeToken)
       return
-    }
+
+    this.markSessionTerminal(sessionId, 'exit_marker', { exitCode: marker.exitCode })
   }
 
   private handleStderr(sessionId: string, child: ChildProcessWithoutNullStreams, chunk: string): void {

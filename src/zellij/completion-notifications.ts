@@ -1,5 +1,5 @@
 import type { SessionStatus as OpenCodeSessionStatus } from '@opencode-ai/sdk'
-import type { CompletionNotificationConfig } from '../config.js'
+import type { CompletionNotificationConfig, CompletionNotificationMode } from '../config.js'
 import type { PtySession, SessionTerminalReason } from '../pty/session.js'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
@@ -136,6 +136,7 @@ export interface CompletionPromptRequest {
 interface CompletionNotificationState {
   event: SubscriberTerminalEvent
   queued: boolean
+  sent: boolean
   toastSent: boolean
   promptAttempts: number
   promptAttemptedAt: number | null
@@ -150,6 +151,10 @@ interface CompletionNotificationDecision {
 const completionTitle = 'Zellij PTY session completed'
 const completionMessage = 'A Zellij PTY session completed. Review the finished pane if needed.'
 const queuedNoticeHeader = '[OpenCode] Zellij PTY completion notice'
+
+function supportsActivePrompt(mode: CompletionNotificationMode): boolean {
+  return mode === 'prompt' || mode === 'queue+toast'
+}
 
 export function buildQueuedCompletionNotice(events: SubscriberTerminalEvent[]): string {
   const lines = events.map(event => `- ${event.session.id} (${event.session.paneId}) 已完成，請使用 zellij_pty_read 讀取最終輸出並清理 pane。`)
@@ -220,7 +225,7 @@ export function evaluateCompletionPromptDecision(input: {
   promptAttemptCount: number
   promptClientAvailable: boolean
 }): CompletionNotificationDecision {
-  if (input.config.mode !== 'prompt')
+  if (!supportsActivePrompt(input.config.mode))
     return { shouldPrompt: false, shouldQueue: false, reason: 'prompt mode disabled' }
 
   if (input.event.session.humanInputOnly || !input.event.session.allowAgentInput)
@@ -290,6 +295,7 @@ export class SessionCompletionNotificationQueue implements CompletionNotificatio
     const state: CompletionNotificationState = {
       event,
       queued: false,
+      sent: false,
       toastSent: false,
       promptAttempts: 0,
       promptAttemptedAt: null,
@@ -306,7 +312,7 @@ export class SessionCompletionNotificationQueue implements CompletionNotificatio
         this.finalize(state)
         return
       case 'queue+toast':
-        state.queued = true
+        await this.tryPromptOrQueue(state)
         await this.sendToast(state)
         return
       case 'prompt':
@@ -323,8 +329,7 @@ export class SessionCompletionNotificationQueue implements CompletionNotificatio
 
     const notice = buildQueuedCompletionNotice(pending.map(state => state.event))
     for (const state of pending) {
-      if (!state.toastSent)
-        this.context.markSent(state.event.sessionId)
+      this.markStateSent(state)
       this.finalize(state)
     }
 
@@ -386,7 +391,7 @@ export class SessionCompletionNotificationQueue implements CompletionNotificatio
         state.queued = true
         return
       }
-      this.context.markSent(state.event.sessionId)
+      this.markStateSent(state)
       this.finalize(state)
     }
     catch (error) {
@@ -412,13 +417,20 @@ export class SessionCompletionNotificationQueue implements CompletionNotificatio
         },
       })
       state.toastSent = true
-      this.context.markSent(state.event.sessionId)
+      this.markStateSent(state)
       if (!state.queued)
         this.finalize(state)
     }
     catch (error) {
       debug('completion notification toast failed', errorMessage(error))
     }
+  }
+
+  private markStateSent(state: CompletionNotificationState): void {
+    if (state.sent)
+      return
+    this.context.markSent(state.event.sessionId)
+    state.sent = true
   }
 
   private finalize(state: CompletionNotificationState): void {

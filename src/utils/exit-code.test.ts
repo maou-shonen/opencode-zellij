@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { createExitCodeToken, parseExitCodeMarker } from './exit-code.js'
+import { createExitCodeToken, parseExitCodeMarker, parseExitCodeMarkerLines } from './exit-code.js'
 import { buildCommandArgv } from './shell-args.js'
 
 describe('exit code capture', () => {
   it('parses exit-code markers', () => {
     expect(parseExitCodeMarker('[zellij-pty:abc123] exit-code=7')).toEqual({ token: 'abc123', exitCode: 7 })
     expect(parseExitCodeMarker('\u001B[32m[zellij-pty:abc123] exit-code=7\u001B[0m')).toEqual({ token: 'abc123', exitCode: 7 })
+    expect(parseExitCodeMarker('[zellij-pty:abc\n123] exit-code=7')).toEqual({ token: 'abc123', exitCode: 7 })
+    expect(parseExitCodeMarkerLines(['prompt-delivery-ready', '', '[zellij-pty:abc123abc123abc123', 'abc123abc123] exit-code=0'])).toEqual({ token: 'abc123abc123abc123abc123abc123', exitCode: 0 })
     expect(parseExitCodeMarker('not a marker')).toBeNull()
   })
 

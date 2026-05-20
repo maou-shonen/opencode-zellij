@@ -152,6 +152,65 @@ describe('ZellijPtyPlugin', () => {
     expect(input).toEqual({ sessionID: 'session_a' })
   })
 
+  it('does not inject a queued completion notice after queue+toast delivers an active prompt', async () => {
+    const project = join(tempRoot, 'project')
+    const prompts: unknown[] = []
+    const toasts: unknown[] = []
+    let queue: SessionCompletionNotificationQueue | undefined
+    const pluginFactory = createZellijPtyPlugin({
+      createCompletionNotifications: (context) => {
+        queue = new SessionCompletionNotificationQueue(context)
+        return queue
+      },
+    })
+
+    const plugin = await pluginFactory(pluginInput(project, {
+      client: {
+        session: {
+          status: async () => ({ data: { session_a: { type: 'idle' } } }),
+          prompt: async (request: unknown) => {
+            prompts.push(request)
+          },
+        },
+        tui: {
+          showToast: async (payload: unknown) => {
+            toasts.push(payload)
+          },
+        },
+      },
+    }), {}) as {
+      'chat.message'?: (input: { sessionID: string }, output: { message: unknown, parts: Array<{ type: string, text?: string }> }) => Promise<unknown>
+    }
+    const session = {
+      id: 'zpty_2',
+      openCodeSessionId: 'session_a',
+      paneId: 'terminal_2',
+      title: 'prompt demo',
+      command: 'bash',
+      args: [],
+      cwd: process.cwd(),
+      status: 'terminal' as const,
+      lineCount: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      allowAgentInput: true,
+      humanInputOnly: false,
+      exitCode: null,
+      exitedAt: null,
+      exitCodeToken: null,
+      tombstone: null,
+    }
+
+    await queue?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })
+
+    const output = { message: { role: 'user', content: 'hello' }, parts: [{ type: 'text', text: 'hello' }] }
+    await plugin['chat.message']?.({ sessionID: 'session_a' }, output)
+
+    expect(prompts).toHaveLength(1)
+    expect(toasts).toHaveLength(1)
+    expect(output.parts).toEqual([{ type: 'text', text: 'hello' }])
+  })
+
   it('keeps sudo tool visible when sudoPane is deny', async () => {
     const project = join(tempRoot, 'project')
     await writeProjectConfig(project, '{ "pty": { "sudoPane": "deny" } }')

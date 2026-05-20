@@ -109,11 +109,31 @@ describe('completion notifications', () => {
     expect(queue.hasPending(session.id)).toBe(false)
   })
 
-  it('shows a toast and keeps the queued notice for the next chat message', async () => {
+  it('actively prompts before toast delivery and skips later queued injection when queue+toast can prompt', async () => {
+    const { queue, session, toasts, prompts, marks } = createHarness(
+      {
+        mode: 'queue+toast',
+        prompt: { requireIdle: true, cooldownMs: 30_000, maxAttempts: 1 },
+      },
+      { statusResponse: { data: { oc_1: { type: 'idle' } } } },
+    )
+
+    await queue.handleSessionTerminal(createEvent(session))
+
+    expect(toasts).toHaveLength(1)
+    expect(prompts).toHaveLength(1)
+    expect(queue.hasPending(session.id)).toBe(false)
+    expect(marks).toEqual([session.id])
+
+    const injected = queue.injectQueuedChatMessage({ message: 'hello' }) as { message: string }
+    expect(injected.message).toBe('hello')
+  })
+
+  it('keeps the queued notice when queue+toast prompt delivery is blocked by the idle guard', async () => {
     const { queue, session, toasts, prompts, marks } = createHarness({
       mode: 'queue+toast',
       prompt: { requireIdle: true, cooldownMs: 30_000, maxAttempts: 1 },
-    })
+    }, { statusResponse: { data: { oc_1: { type: 'busy' } } } })
 
     await queue.handleSessionTerminal(createEvent(session))
 
@@ -125,6 +145,40 @@ describe('completion notifications', () => {
     const injected = queue.injectQueuedChatMessage({ message: 'hello' }) as { message: string }
     expect(injected.message).toContain('[OpenCode] Zellij PTY completion notice')
     expect(queue.hasPending(session.id)).toBe(false)
+  })
+
+  it('keeps the queued notice when queue+toast prompt delivery is unavailable or fails', async () => {
+    const unavailable = createHarness({
+      mode: 'queue+toast',
+      prompt: { requireIdle: true, cooldownMs: 30_000, maxAttempts: 1 },
+    }, { statusResponse: { data: { oc_1: { type: 'idle' } } } })
+
+    unavailable.client.session = unavailable.sessionClient.status
+      ? { status: unavailable.sessionClient.status }
+      : {}
+
+    await unavailable.queue.handleSessionTerminal(createEvent(unavailable.session))
+
+    expect(unavailable.prompts).toHaveLength(0)
+    expect(unavailable.toasts).toHaveLength(1)
+    expect(unavailable.queue.hasPending(unavailable.session.id)).toBe(true)
+
+    const rejected = createHarness(
+      {
+        mode: 'queue+toast',
+        prompt: { requireIdle: true, cooldownMs: 30_000, maxAttempts: 1 },
+      },
+      { statusResponse: { data: { oc_1: { type: 'idle' } } }, promptBehavior: 'reject' },
+    )
+
+    await rejected.queue.handleSessionTerminal(createEvent(rejected.session))
+
+    expect(rejected.prompts).toHaveLength(1)
+    expect(rejected.toasts).toHaveLength(1)
+    expect(rejected.queue.hasPending(rejected.session.id)).toBe(true)
+
+    const injected = rejected.queue.injectQueuedChatMessage({ message: 'hello' }) as { message: string }
+    expect(injected.message).toContain('[OpenCode] Zellij PTY completion notice')
   })
 
   it('prompts directly when the guard passes and uses the SDK prompt request shape', async () => {
