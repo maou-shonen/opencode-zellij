@@ -79,17 +79,6 @@ export const requestSudoTool = tool({
       exitCodeToken,
     })
 
-    const warnings: string[] = []
-    try {
-      await zellijCli.focusPane(paneId)
-    }
-    catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (!message.includes('already focused'))
-        throw error
-      warnings.push('Pane was already focused after creation.')
-    }
-
     const session = sessionManager.create({
       openCodeSessionId: context.sessionID,
       paneId,
@@ -108,7 +97,7 @@ export const requestSudoTool = tool({
       session: publicSession(session),
       output: readOutputSnapshot(session.id),
       next: nextAdvice(false, 'The user must review the summary and commands in Zellij, then type YES and any required credentials directly in the pane.'),
-      warnings,
+      warnings: [],
     })
   },
 })

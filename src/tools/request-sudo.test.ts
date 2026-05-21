@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildReviewScript, shellQuote } from './request-sudo.js'
+import { buildReviewScript, requestSudoTool, shellQuote } from './request-sudo.js'
 
 describe('zellij_pty_request_sudo helpers', () => {
   it('shell-quotes single quotes safely', () => {
@@ -18,5 +18,27 @@ describe('zellij_pty_request_sudo helpers', () => {
     expect(script).toContain('sudo apt-get install -y jq')
     expect(script).toContain('Type YES to run these commands')
     expect(script).toContain('bash -lc \'sudo apt-get update\'')
+  })
+})
+
+describe('zellij_pty_request_sudo no-focus regression guard', () => {
+  it('execute does not call focusPane', () => {
+    const source = requestSudoTool.execute.toString()
+    expect(source).not.toContain('focusPane')
+    expect(source).not.toContain('focus-pane-id')
+  })
+
+  it('execute response contains warnings field for shape compatibility', () => {
+    const source = requestSudoTool.execute.toString()
+    expect(source).toContain('warnings')
+    expect(source).toContain('[]')
+  })
+
+  it('human-input-only and agent-non-writable semantics are preserved in review script', () => {
+    const script = buildReviewScript('test', [
+      { command: 'echo ok', description: 'harmless' },
+    ])
+    expect(script).toContain('This pane is human-input-only. The agent cannot type here.')
+    expect(script).toContain('read -r -p \'Type YES to run these commands')
   })
 })
