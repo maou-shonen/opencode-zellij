@@ -30,11 +30,17 @@ const ptyToolNamesWithoutSudo = ptyToolNames.filter(name => name !== 'zellij_pty
 describe('built plugin integration load', () => {
   let tempRoot = ''
   let originalXdgConfigHome: string | undefined
+  let originalProcessRole: string | undefined
 
   beforeEach(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), 'opencode-zellij-integration-'))
     originalXdgConfigHome = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = join(tempRoot, 'xdg')
+    // The built plugin short-circuits to a no-op outside the OpenCode TUI
+    // session. Force the TUI role here so these tests exercise the full
+    // hook/tool surface.
+    originalProcessRole = process.env.OPENCODE_PROCESS_ROLE
+    process.env.OPENCODE_PROCESS_ROLE = 'worker'
   })
 
   afterEach(async () => {
@@ -42,6 +48,11 @@ describe('built plugin integration load', () => {
       delete process.env.XDG_CONFIG_HOME
     else
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome
+
+    if (originalProcessRole === undefined)
+      delete process.env.OPENCODE_PROCESS_ROLE
+    else
+      process.env.OPENCODE_PROCESS_ROLE = originalProcessRole
 
     await rm(tempRoot, { force: true, recursive: true })
   })
