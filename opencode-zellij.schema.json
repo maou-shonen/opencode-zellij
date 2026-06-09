@@ -112,11 +112,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "autoUpdate": {
-      "description": "Enable automatic update checks for the opencode-zellij plugin.",
-      "type": "boolean",
-      "default": true
     }
   },
   "additionalProperties": false,

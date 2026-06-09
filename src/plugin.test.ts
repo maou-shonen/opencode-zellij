@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import zellijPlugin, { createZellijPtyPlugin, showUpdateToast, startAutoUpdateCheck } from './plugin.js'
-import type { UpdateResult } from './auto-update.js'
+import zellijPlugin, { createZellijPtyPlugin } from './plugin.js'
 import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
 
 describe('ZellijPtyPlugin', () => {
@@ -49,36 +48,6 @@ describe('ZellijPtyPlugin', () => {
     expect(zellijPlugin).not.toBeNull()
     expect((zellijPlugin as { id?: unknown }).id).toBe('opencode-zellij')
     expect(typeof (zellijPlugin as { server?: unknown }).server).toBe('function')
-  })
-
-  it('starts auto-update during plugin initialization without waiting for events', async () => {
-    const project = join(tempRoot, 'project')
-    const calls: string[] = []
-    const pluginFactory = createZellijPtyPlugin({
-      importMetaUrl: 'file:///plugin/dist/index.mjs',
-      startAutoUpdateCheck: (_client, importMetaUrl) => {
-        calls.push(importMetaUrl)
-      },
-    })
-
-    await pluginFactory(pluginInput(project), {})
-
-    expect(calls).toEqual(['file:///plugin/dist/index.mjs'])
-  })
-
-  it('does not start auto-update when disabled by config', async () => {
-    const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "autoUpdate": false }')
-    const calls: string[] = []
-    const pluginFactory = createZellijPtyPlugin({
-      startAutoUpdateCheck: () => {
-        calls.push('called')
-      },
-    })
-
-    await pluginFactory(pluginInput(project), {})
-
-    expect(calls).toEqual([])
   })
 
   it('injects queued completion notifications through the top-level chat.message hook', async () => {
@@ -223,13 +192,8 @@ describe('ZellijPtyPlugin', () => {
 
   it('short-circuits to a no-op when not running inside an OpenCode TUI session', async () => {
     const project = join(tempRoot, 'project')
-    const autoUpdateCalls: string[] = []
     const createNotificationsCalls: unknown[] = []
     const pluginFactory = createZellijPtyPlugin({
-      importMetaUrl: 'file:///plugin/dist/index.mjs',
-      startAutoUpdateCheck: () => {
-        autoUpdateCalls.push('called')
-      },
       createCompletionNotifications: (context) => {
         createNotificationsCalls.push(context)
         return undefined
@@ -242,7 +206,6 @@ describe('ZellijPtyPlugin', () => {
     const hooks = await pluginFactory(pluginInput(project), {})
 
     expect(hooks).toEqual({})
-    expect(autoUpdateCalls).toEqual([])
     expect(createNotificationsCalls).toEqual([])
   })
 
@@ -253,146 +216,5 @@ describe('ZellijPtyPlugin', () => {
     const hooks = (await createZellijPtyPlugin()(pluginInput(project), {})) as { tool?: Record<string, unknown> }
 
     expect(hooks.tool).toBeUndefined()
-  })
-})
-
-describe('showUpdateToast', () => {
-  function mockClient(): { calls: unknown[], client: Parameters<typeof showUpdateToast>[0] } {
-    const calls: unknown[] = []
-    return {
-      calls,
-      client: {
-        tui: {
-          showToast: (options: unknown) => {
-            calls.push(options)
-            return Promise.resolve()
-          },
-        },
-      },
-    }
-  }
-
-  it('shows success toast when update was installed', () => {
-    const { calls, client } = mockClient()
-    const result: UpdateResult = { type: 'updated', fromVersion: '0.0.1', toVersion: '0.0.2' }
-
-    showUpdateToast(client, result)
-
-    expect(calls.length).toBe(1)
-    expect(calls[0]).toEqual({
-      body: {
-        title: 'opencode-zellij updated',
-        message: 'Updated to 0.0.2. Restart OpenCode to apply the changes.',
-        variant: 'success',
-        duration: 10_000,
-      },
-    })
-  })
-
-  it('shows error toast when update failed', () => {
-    const { calls, client } = mockClient()
-    const result: UpdateResult = { type: 'failed', currentVersion: '0.0.1', latestVersion: '0.0.2', reason: 'npm install failed' }
-
-    showUpdateToast(client, result)
-
-    expect(calls.length).toBe(1)
-    expect(calls[0]).toEqual({
-      body: {
-        title: 'opencode-zellij update failed',
-        message: 'Failed to update to 0.0.2.',
-        variant: 'error',
-        duration: 8_000,
-      },
-    })
-  })
-
-  it('does nothing when skipped', () => {
-    const { calls, client } = mockClient()
-    const result: UpdateResult = { type: 'skipped', reason: 'not installed from npm' }
-
-    showUpdateToast(client, result)
-
-    expect(calls.length).toBe(0)
-  })
-
-  it('does nothing when up-to-date', () => {
-    const { calls, client } = mockClient()
-    const result: UpdateResult = { type: 'up-to-date', currentVersion: '0.0.2' }
-
-    showUpdateToast(client, result)
-
-    expect(calls.length).toBe(0)
-  })
-
-  it('swallows toast promise rejection', async () => {
-    const client = {
-      tui: {
-        showToast: () => Promise.reject(new Error('toast failed')),
-      },
-    }
-    const result: UpdateResult = { type: 'updated', fromVersion: '0.0.1', toVersion: '0.0.2' }
-
-    // Should not throw
-    showUpdateToast(client, result)
-    // Allow microtask queue to process the rejected promise
-    await new Promise(resolve => setTimeout(resolve, 10))
-  })
-})
-
-describe('startAutoUpdateCheck', () => {
-  function mockClient(): { calls: unknown[], client: Parameters<typeof startAutoUpdateCheck>[0] } {
-    const calls: unknown[] = []
-    return {
-      calls,
-      client: {
-        tui: {
-          showToast: (options: unknown) => {
-            calls.push(options)
-            return Promise.resolve()
-          },
-        },
-      },
-    }
-  }
-
-  it('runs auto-update immediately and shows update toast', async () => {
-    const { calls, client } = mockClient()
-    const seenImportUrls: string[] = []
-
-    startAutoUpdateCheck(client, 'file:///plugin/dist/index.mjs', async (options) => {
-      seenImportUrls.push(options.importMetaUrl)
-      return { type: 'updated', fromVersion: '0.0.5', toVersion: '0.0.6' }
-    })
-
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    expect(seenImportUrls).toEqual(['file:///plugin/dist/index.mjs'])
-    expect(calls).toEqual([{ body: { title: 'opencode-zellij updated', message: 'Updated to 0.0.6. Restart OpenCode to apply the changes.', variant: 'success', duration: 10_000 } }])
-  })
-
-  it('swallows rejected update checks', async () => {
-    const { calls, client } = mockClient()
-
-    startAutoUpdateCheck(client, 'file:///plugin/dist/index.mjs', async () => {
-      throw new Error('network failed')
-    })
-
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    expect(calls).toEqual([])
-  })
-
-  it('swallows synchronous toast failures from update checks', async () => {
-    const client = {
-      tui: {
-        showToast: () => {
-          throw new Error('toast failed')
-        },
-      },
-    }
-
-    startAutoUpdateCheck(client, 'file:///plugin/dist/index.mjs', async () => ({ type: 'updated', fromVersion: '0.0.5', toVersion: '0.0.6' }))
-
-    await new Promise(resolve => setTimeout(resolve, 10))
   })
 })

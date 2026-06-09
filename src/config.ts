@@ -40,12 +40,9 @@ export type SudoPaneMode = z.infer<typeof sudoPaneSchema>
 
 export type CompletionNotificationMode = z.infer<typeof completionNotificationModeSchema>
 
-export type AutoUpdateConfig = boolean
-
 export interface ZellijPluginConfig {
   tabTitle: TabTitleConfig
   pty: PtyConfig
-  autoUpdate: AutoUpdateConfig
 }
 
 export interface LoadConfigInput {
@@ -90,13 +87,10 @@ const ptyLayerSchema = z.object({
   }).strict().optional().describe('Completion notification delivery settings.'),
 }).strict()
 
-const autoUpdateLayerSchema = z.boolean().optional().describe('Enable automatic update checks for the opencode-zellij plugin.')
-
 export const sidecarConfigSchema = z.object({
   $schema: z.string().optional().describe('JSON Schema URI for editor completion.'),
   tabTitle: tabTitleLayerSchema.optional(),
   pty: ptyLayerSchema.optional(),
-  autoUpdate: autoUpdateLayerSchema.optional(),
 }).strict()
 
 export const defaultConfig: ZellijPluginConfig = {
@@ -121,10 +115,9 @@ export const defaultConfig: ZellijPluginConfig = {
       },
     },
   },
-  autoUpdate: true,
 }
 
-type ConfigLayer = Pick<z.infer<typeof sidecarConfigSchema>, 'tabTitle' | 'pty' | 'autoUpdate'>
+type ConfigLayer = Pick<z.infer<typeof sidecarConfigSchema>, 'tabTitle' | 'pty'>
 
 function validConfigLayer(value: unknown): ConfigLayer | undefined {
   const result = sidecarConfigSchema.safeParse(value)
@@ -134,7 +127,6 @@ function validConfigLayer(value: unknown): ConfigLayer | undefined {
   return {
     tabTitle: result.data.tabTitle,
     pty: result.data.pty,
-    autoUpdate: result.data.autoUpdate,
   }
 }
 
@@ -161,7 +153,6 @@ function mergeConfig(user?: ConfigLayer | undefined, project?: ConfigLayer | und
         },
       },
     },
-    autoUpdate: project?.autoUpdate ?? user?.autoUpdate ?? defaultConfig.autoUpdate,
   }
 }
 

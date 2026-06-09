@@ -76,7 +76,6 @@ OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝，�
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/maou-shonen/opencode-zellij/main/opencode-zellij.schema.json",
-  "autoUpdate": true,
   "pty": {
     "enabled": true,
     "sudoPane": "allow" // allow, deny, or hide
@@ -85,7 +84,7 @@ OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝，�
 }
 ```
 
-將 `autoUpdate`、`pty.enabled` 或 `tabTitle.enabled` 設為 `false` 可關閉對應功能。
+將 `pty.enabled` 或 `tabTitle.enabled` 設為 `false` 可關閉對應功能。
 
 ## 動態 tab title
 

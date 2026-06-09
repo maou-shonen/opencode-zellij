@@ -76,7 +76,6 @@ Optional sidecar config files are loaded from `~/.config/opencode/opencode-zelli
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/maou-shonen/opencode-zellij/main/opencode-zellij.schema.json",
-  "autoUpdate": true,
   "pty": {
     "enabled": true,
     "sudoPane": "allow" // allow, deny, or hide
@@ -85,7 +84,7 @@ Optional sidecar config files are loaded from `~/.config/opencode/opencode-zelli
 }
 ```
 
-Set `autoUpdate`, `pty.enabled`, or `tabTitle.enabled` to `false` to turn those features off.
+Set `pty.enabled` or `tabTitle.enabled` to `false` to turn those features off.
 
 ## Dynamic tab title
 

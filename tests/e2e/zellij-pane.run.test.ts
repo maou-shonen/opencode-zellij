@@ -442,6 +442,6 @@ integration('real Zellij pane run integration', () => {
           await killQuietly(hooks, sessionID, ctx)
         await disposeQuietly(hooks)
       }
-    }, { configContent: '{ "tabTitle": { "enabled": true }, "pty": { "completionNotification": { "mode": "queue+toast", "prompt": { "requireIdle": true, "cooldownMs": 30000, "maxAttempts": 1 } } }, "autoUpdate": false }' })
+    }, { configContent: '{ "tabTitle": { "enabled": true }, "pty": { "completionNotification": { "mode": "queue+toast", "prompt": { "requireIdle": true, "cooldownMs": 30000, "maxAttempts": 1 } } } }' })
   }, integrationTimeoutMs)
 })

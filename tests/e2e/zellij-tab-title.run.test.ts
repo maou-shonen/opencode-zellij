@@ -169,7 +169,7 @@ integration('real Zellij tab-title run integration', () => {
             }
           }
         }
-      }, { configContent: '{ "tabTitle": { "enabled": false }, "autoUpdate": false }' })
+      }, { configContent: '{ "tabTitle": { "enabled": false } }' })
     })
   }, integrationTimeoutMs)
 
@@ -247,7 +247,7 @@ integration('real Zellij tab-title run integration', () => {
       finally {
         await disposeQuietly(hooks)
       }
-    }, { configContent: '{ "tabTitle": { "enabled": true, "emojiIdle": "I", "emojiRunning": "R", "emojiNeedsInput": "Q", "emojiBranch": "B" }, "autoUpdate": false }' })
+    }, { configContent: '{ "tabTitle": { "enabled": true, "emojiIdle": "I", "emojiRunning": "R", "emojiNeedsInput": "Q", "emojiBranch": "B" } }' })
   }, integrationTimeoutMs)
 
   it('switches from busy to idle for the same session', async () => {

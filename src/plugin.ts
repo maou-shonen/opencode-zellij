@@ -1,9 +1,7 @@
 import type { Plugin, PluginModule } from '@opencode-ai/plugin'
-import type { UpdateResult } from './auto-update.js'
 import type { CompletionNotificationClient, CompletionNotificationContext, CompletionNotificationManager } from './zellij/completion-notifications.js'
 import type { OpenCodeEventLike } from './zellij/tab-title-events.js'
 import process from 'node:process'
-import { checkAndUpdate, PACKAGE_NAME } from './auto-update.js'
 import { loadConfig } from './config.js'
 import { configureSudoPane } from './permissions/sudo-pane.js'
 import { sessionManager } from './pty/manager.js'
@@ -23,6 +21,8 @@ import { subscriberManager } from './zellij/subscribe.js'
 import { deletedSessionID, getInitialBranch, shouldReadInitialBranch } from './zellij/tab-title-events.js'
 import { TabTitleActivityModel, TabTitleActor, TabTitleIdentityModel, TabTitleManager } from './zellij/tab-title.js'
 
+const PLUGIN_ID = 'opencode-zellij'
+
 function createPtyTools(defaultCleanupExitedPaneOnRead: boolean) {
   return {
     zellij_pty_spawn: zellijPtySpawnTool,
@@ -39,59 +39,6 @@ function getProjectName(path: string): string {
 
 function getWorkspaceRoot(input: { directory?: string | undefined, worktree?: string | undefined }): string {
   return input.worktree || input.directory || process.cwd()
-}
-
-export interface ToastClient {
-  tui: {
-    showToast: (options: {
-      body: {
-        title: string
-        message: string
-        variant: 'success' | 'error'
-        duration: number
-      }
-    }) => Promise<unknown>
-  }
-}
-
-export function showUpdateToast(client: ToastClient, result: UpdateResult): void {
-  if (result.type === 'updated') {
-    client.tui.showToast({
-      body: {
-        title: 'opencode-zellij updated',
-        message: `Updated to ${result.toVersion}. Restart OpenCode to apply the changes.`,
-        variant: 'success',
-        duration: 10_000,
-      },
-    })
-      .catch(error => debug('show update toast for successful update failed', errorMessage(error)))
-  }
-  else if (result.type === 'failed') {
-    client.tui.showToast({
-      body: {
-        title: 'opencode-zellij update failed',
-        message: `Failed to update to ${result.latestVersion}.`,
-        variant: 'error',
-        duration: 8_000,
-      },
-    })
-      .catch(error => debug('show update toast for failed update failed', errorMessage(error)))
-  }
-}
-
-export function startAutoUpdateCheck(
-  client: ToastClient,
-  importMetaUrl: string,
-  check: typeof checkAndUpdate = checkAndUpdate,
-): void {
-  ;(async () => {
-    try {
-      showUpdateToast(client, await check({ importMetaUrl }))
-    }
-    catch (cause) {
-      debug('auto-update check failed', errorMessage(cause))
-    }
-  })()
 }
 
 async function cleanupStep(stepName: string, sessionId: string, step: () => void | Promise<void>): Promise<void> {
@@ -111,8 +58,6 @@ async function cleanupDeletedSession(sessionId: string): Promise<void> {
 }
 
 export interface ZellijPtyPluginDependencies {
-  importMetaUrl?: string | undefined
-  startAutoUpdateCheck?: typeof startAutoUpdateCheck | undefined
   createCompletionNotifications?: (context: CompletionNotificationContext) => CompletionNotificationManager | undefined
 }
 
@@ -210,9 +155,6 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
     tabTitleManager?.renderImmediate()
       .catch(error => debug('initial tab title render failed', errorMessage(error)))
 
-    if (config.autoUpdate)
-      (dependencies.startAutoUpdateCheck ?? startAutoUpdateCheck)(client, dependencies.importMetaUrl ?? import.meta.url)
-
     return {
       async event(input) {
         const event: OpenCodeEventLike = input.event
@@ -270,6 +212,6 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
 export const ZellijPtyPlugin: Plugin = createZellijPtyPlugin()
 
 export default {
-  id: PACKAGE_NAME,
+  id: PLUGIN_ID,
   server: ZellijPtyPlugin,
 } satisfies Pick<PluginModule, 'id' | 'server'>

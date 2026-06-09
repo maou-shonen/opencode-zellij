@@ -45,7 +45,6 @@ export function generateJsonSchema(): JsonObject {
   setDefault(schema, ['pty', 'completionNotification', 'prompt', 'requireIdle'], defaultConfig.pty.completionNotification.prompt.requireIdle)
   setDefault(schema, ['pty', 'completionNotification', 'prompt', 'cooldownMs'], defaultConfig.pty.completionNotification.prompt.cooldownMs)
   setDefault(schema, ['pty', 'completionNotification', 'prompt', 'maxAttempts'], defaultConfig.pty.completionNotification.prompt.maxAttempts)
-  setDefault(schema, ['autoUpdate'], defaultConfig.autoUpdate)
 
   return schema
 }

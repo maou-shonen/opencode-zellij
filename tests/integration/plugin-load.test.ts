@@ -118,7 +118,7 @@ describe('built plugin integration load', () => {
   }
 
   it('loads built plugin and exposes the hook/tool surface', async () => {
-    await writeProjectConfig('{ "tabTitle": { "enabled": true }, "autoUpdate": false }')
+    await writeProjectConfig('{ "tabTitle": { "enabled": true } }')
 
     const hooks = await loadBuiltPlugin(clientWithStatus())
 
@@ -132,7 +132,7 @@ describe('built plugin integration load', () => {
   })
 
   it('omits built PTY tools when pty.enabled is false', async () => {
-    await writeProjectConfig('{ "pty": { "enabled": false }, "autoUpdate": false }')
+    await writeProjectConfig('{ "pty": { "enabled": false } }')
 
     const hooks = await loadBuiltPlugin(clientWithStatus())
 
@@ -146,7 +146,7 @@ describe('built plugin integration load', () => {
   })
 
   it('hides the built sudo tool when sudoPane is hide', async () => {
-    await writeProjectConfig('{ "pty": { "sudoPane": "hide" }, "autoUpdate": false }')
+    await writeProjectConfig('{ "pty": { "sudoPane": "hide" } }')
 
     const hooks = await loadBuiltPlugin(clientWithStatus())
 
@@ -159,7 +159,7 @@ describe('built plugin integration load', () => {
   })
 
   it('keeps the built sudo tool visible but denies execution when sudoPane is deny', async () => {
-    await writeProjectConfig('{ "pty": { "sudoPane": "deny" }, "autoUpdate": false }')
+    await writeProjectConfig('{ "pty": { "sudoPane": "deny" } }')
 
     const hooks = await loadBuiltPlugin(clientWithStatus())
 
@@ -186,7 +186,7 @@ describe('built plugin integration load', () => {
   })
 
   it('loads built plugin without waiting for startup status snapshot', async () => {
-    await writeProjectConfig('{ "tabTitle": { "enabled": true }, "autoUpdate": false }')
+    await writeProjectConfig('{ "tabTitle": { "enabled": true } }')
 
     const result = await Promise.race([
       loadBuiltPlugin({

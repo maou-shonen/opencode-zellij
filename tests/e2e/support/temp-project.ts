@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
-const DEFAULT_PROJECT_CONFIG = '{ "tabTitle": { "enabled": true }, "autoUpdate": false }'
+const DEFAULT_PROJECT_CONFIG = '{ "tabTitle": { "enabled": true } }'
 
 interface TempProjectOptions {
   configContent?: string
