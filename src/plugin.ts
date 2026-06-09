@@ -1,9 +1,9 @@
-import type { Plugin } from '@opencode-ai/plugin'
+import type { Plugin, PluginModule } from '@opencode-ai/plugin'
 import type { UpdateResult } from './auto-update.js'
 import type { CompletionNotificationClient, CompletionNotificationContext, CompletionNotificationManager } from './zellij/completion-notifications.js'
 import type { OpenCodeEventLike } from './zellij/tab-title-events.js'
 import process from 'node:process'
-import { checkAndUpdate } from './auto-update.js'
+import { checkAndUpdate, PACKAGE_NAME } from './auto-update.js'
 import { loadConfig } from './config.js'
 import { configureSudoPane } from './permissions/sudo-pane.js'
 import { sessionManager } from './pty/manager.js'
@@ -249,6 +249,20 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
   }
 }
 
+// Default export follows the V1 PluginModule shape expected by opencode's
+// plugin loader (`@opencode-ai/plugin` PluginModule = { id?, server, tui?: never }).
+// The `id` is required for file plugins; opencode uses it to identify the
+// plugin in logs and `resolvePluginId`. `server` is the plugin factory
+// (a `Plugin` = `(input, options) => Promise<Hooks>`).
+//
+// `ZellijPtyPlugin` is also re-exported as a named symbol for tests and
+// internal callers that need the raw factory; it is no longer the default
+// export so that opencode's `readV1Plugin` finds the expected object shape
+// instead of falling through to the legacy `getLegacyPlugins` path, which
+// would otherwise try to invoke every other named export as a plugin.
 export const ZellijPtyPlugin: Plugin = createZellijPtyPlugin()
 
-export default ZellijPtyPlugin
+export default {
+  id: PACKAGE_NAME,
+  server: ZellijPtyPlugin,
+} satisfies Pick<PluginModule, 'id' | 'server'>

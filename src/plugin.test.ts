@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import ZellijPtyPlugin, { createZellijPtyPlugin, showUpdateToast, startAutoUpdateCheck } from './plugin.js'
+import zellijPlugin, { createZellijPtyPlugin, showUpdateToast, startAutoUpdateCheck } from './plugin.js'
 import type { UpdateResult } from './auto-update.js'
 import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
 
@@ -24,8 +24,11 @@ describe('ZellijPtyPlugin', () => {
     await rm(tempRoot, { force: true, recursive: true })
   })
 
-  function pluginInput(directory: string, input: Record<string, unknown> = {}): Parameters<typeof ZellijPtyPlugin>[0] {
-    return { directory, ...input } as Parameters<typeof ZellijPtyPlugin>[0]
+  // Use the inline factory so the helper type is a real `Plugin` instead of
+  // the V1 PluginModule object the module now default-exports.
+  const pluginFactory = createZellijPtyPlugin()
+  function pluginInput(directory: string, input: Record<string, unknown> = {}): Parameters<typeof pluginFactory>[0] {
+    return { directory, ...input } as Parameters<typeof pluginFactory>[0]
   }
 
   async function writeProjectConfig(directory: string, content: string): Promise<void> {
@@ -34,8 +37,11 @@ describe('ZellijPtyPlugin', () => {
     await writeFile(join(configDir, 'opencode-zellij.config.jsonc'), content)
   }
 
-  it('exports an OpenCode plugin function', () => {
-    expect(typeof ZellijPtyPlugin).toBe('function')
+  it('default-exports a V1 PluginModule with id and server', () => {
+    expect(typeof zellijPlugin).toBe('object')
+    expect(zellijPlugin).not.toBeNull()
+    expect((zellijPlugin as { id?: unknown }).id).toBe('opencode-zellij')
+    expect(typeof (zellijPlugin as { server?: unknown }).server).toBe('function')
   })
 
   it('starts auto-update during plugin initialization without waiting for events', async () => {

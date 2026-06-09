@@ -10,7 +10,10 @@ interface PluginHooks {
 }
 
 interface PluginModule {
-  default: (input: Record<string, unknown>, options?: unknown) => Promise<PluginHooks>
+  default: {
+    id: string
+    server: (input: Record<string, unknown>, options?: unknown) => Promise<PluginHooks>
+  }
 }
 
 const builtPluginPath = pathToFileURL(join(process.cwd(), 'dist/index.mjs')).href
@@ -55,7 +58,7 @@ describe('built plugin integration load', () => {
 
   async function loadBuiltPlugin(client: Record<string, unknown>): Promise<PluginHooks> {
     const mod = (await import(`${builtPluginPath}?integration=${Date.now()}-${Math.random()}`)) as PluginModule
-    return mod.default({
+    return mod.default.server({
       directory: projectRoot(),
       worktree: projectRoot(),
       client,
