@@ -376,9 +376,6 @@ export class TabTitleManager {
   private readonly emojis: TabTitleEmojis
   private readonly enabled: boolean
   private destroyed = false
-  private originalTabTitle: string | undefined
-  private originalTabTitleLoaded = false
-  private originalTabTitlePromise: Promise<void> | undefined
   private destroyPromise: Promise<void> | undefined
   private readonly actor: TabTitleActor
 
@@ -405,9 +402,6 @@ export class TabTitleManager {
 
   async renderImmediate(): Promise<void> {
     if (!this.enabled || this.destroyed)
-      return
-    await this.ensureOriginalTabTitle()
-    if (this.destroyed)
       return
     this.desiredTitle = this.buildTitle()
     this.clearDebounceTimer()
@@ -439,7 +433,6 @@ export class TabTitleManager {
     if (!this.enabled || this.destroyed)
       return
     const generation = this.syncGeneration
-    await this.ensureOriginalTabTitle()
     if (this.destroyed || generation !== this.syncGeneration)
       return
     if (this.syncInFlight)
@@ -508,31 +501,15 @@ export class TabTitleManager {
     this.debounceTimer = undefined
   }
 
-  private async ensureOriginalTabTitle(): Promise<void> {
-    if (!this.enabled || this.originalTabTitleLoaded)
-      return
-    if (this.originalTabTitlePromise)
-      return this.originalTabTitlePromise
-
-    this.originalTabTitlePromise = this.saveOriginalTabTitle()
-    return this.originalTabTitlePromise
-  }
-
-  private async saveOriginalTabTitle(): Promise<void> {
-    try {
-      const title = await this.cli.currentTabTitle()
-      if (title !== undefined)
-        this.originalTabTitle = title
-    }
-    catch (error) {
-      debug('TabTitleManager failed to save original tab title', errorMessage(error))
-    }
-    finally {
-      this.originalTabTitleLoaded = true
-      this.originalTabTitlePromise = undefined
-    }
-  }
-
+  // No-op. Previously this method captured the tab title and restored it
+  // on destroy, but in practice the opencode plugin lifecycle never
+  // dispatches a reliable "session ended" event in any mode (TUI
+  // worker shutdown, `opencode run` headless, or `opencode run --interactive`
+  // all exit without firing `server.instance.disposed` / `global.disposed`).
+  // `process.once('exit')` only supports sync callbacks so it cannot drive
+  // the async Zellij rename, and SIGKILL cannot be intercepted at all.
+  // The remaining work is to clear timers so a straggler sync cannot race
+  // the process exit; the tab title we set is simply left in place.
   destroy(): Promise<void> {
     if (this.destroyed)
       return this.destroyPromise ?? Promise.resolve()
@@ -541,22 +518,6 @@ export class TabTitleManager {
     this.desiredTitle = undefined
     this.clearDebounceTimer()
     this.clearRetryTimer()
-
-    if (!this.enabled)
-      return Promise.resolve()
-
-    this.destroyPromise = this.restoreOriginalTabTitle()
-      .catch(error => debug('TabTitleManager failed to restore original tab title', errorMessage(error)))
-    return this.destroyPromise
-  }
-
-  private async restoreOriginalTabTitle(): Promise<void> {
-    await this.originalTabTitlePromise
-    await this.syncPromise
-    const originalTitle = this.originalTabTitle
-    this.originalTabTitle = undefined
-    if (originalTitle === undefined)
-      return
-    await this.cli.renameTab(originalTitle)
+    return Promise.resolve()
   }
 }

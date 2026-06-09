@@ -219,12 +219,7 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
 
         if (actor && tabTitleManager) {
           await actor.handleEvent(event)
-          if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
-            await tabTitleManager.destroy()
-          }
-          else {
-            tabTitleManager.scheduleUpdate()
-          }
+          tabTitleManager.scheduleUpdate()
         }
         if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
           completionNotifications?.clearAll()
