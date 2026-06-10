@@ -98,6 +98,18 @@ When OpenCode runs inside Zellij, the plugin updates the current tab title to sh
 
 The title is updated best-effort from OpenCode session, question, permission, and branch events.
 
+## Pane completion event
+
+When a plugin-created pane exits, the plugin immediately calls `client.session.promptAsync()` (falling back to `client.session.prompt()`) on the OpenCode session that owns the pane, so the agent wakes up and sees something like:
+
+```text
+[zellij_pty] pane terminal_742 exit=0 — call zellij_pty_read to read, then zellij_pty_kill to close.
+```
+
+The prompt is fired exactly once per pane terminal event (de-duplicated by `paneId` + `event.id`), even if multiple terminal signals arrive (e.g. process exit followed by pane close). The plugin only targets the session that owns the pane — a different session's prompt is never touched.
+
+If `client.session.prompt` rejects (e.g. the session is busy with a `MessageAbortedError`), the plugin logs at debug level and continues without retrying. The OpenCode server handles prompt scheduling.
+
 ## Pane cleanup watchdog
 
 When the plugin creates a pane, it also starts a small detached Node.js watchdog process for that OpenCode plugin instance. The watchdog keeps a per-instance registry under `$XDG_RUNTIME_DIR/opencode-zellij-*` (or the system temp directory), watches the owning OpenCode process, and closes plugin-created panes if OpenCode exits before normal plugin cleanup can run, such as when leaving with Ctrl-D.

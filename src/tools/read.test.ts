@@ -134,7 +134,6 @@ function createCompletedReadFixture(
       terminalAt: '2026-01-01T00:00:00.000Z',
       tail: ['one', 'two', 'three'],
       paneClosedAt: null,
-      notificationSentAt: null,
     },
   }
 

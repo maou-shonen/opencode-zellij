@@ -6,3 +6,5 @@ coverage/
 .DS_Store
 tmp/
 .agent/
+audit.json
+.cache/

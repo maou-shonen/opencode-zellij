@@ -7,7 +7,6 @@ export interface SessionTombstone {
   terminalAt: string
   tail: string[]
   paneClosedAt: string | null
-  notificationSentAt: string | null
 }
 
 export interface PtySession {

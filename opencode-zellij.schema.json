@@ -65,50 +65,6 @@
             "hide"
           ],
           "default": "allow"
-        },
-        "completionNotification": {
-          "description": "Completion notification delivery settings.",
-          "type": "object",
-          "properties": {
-            "mode": {
-              "description": "Controls how completion notifications are delivered.",
-              "type": "string",
-              "enum": [
-                "off",
-                "queue",
-                "toast",
-                "queue+toast",
-                "prompt"
-              ],
-              "default": "queue+toast"
-            },
-            "prompt": {
-              "description": "Prompt-specific completion notification settings.",
-              "type": "object",
-              "properties": {
-                "requireIdle": {
-                  "description": "Require the plugin to be idle before prompting.",
-                  "type": "boolean",
-                  "default": true
-                },
-                "cooldownMs": {
-                  "description": "Cooldown time before prompting again in milliseconds.",
-                  "type": "number",
-                  "minimum": 0,
-                  "default": 30000
-                },
-                "maxAttempts": {
-                  "description": "Maximum prompt attempts before backing off.",
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991,
-                  "default": 1
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
         }
       },
       "additionalProperties": false

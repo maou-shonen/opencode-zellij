@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import zellijPlugin, { createZellijPtyPlugin } from './plugin.js'
-import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
+import { SessionCompletionNotificationManager } from './zellij/completion-notifications.js'
 
 describe('ZellijPtyPlugin', () => {
   let tempRoot = ''
@@ -50,91 +50,87 @@ describe('ZellijPtyPlugin', () => {
     expect(typeof (zellijPlugin as { server?: unknown }).server).toBe('function')
   })
 
-  it('injects queued completion notifications through the top-level chat.message hook', async () => {
+  it('fires the completion prompt the moment a pane exits', async () => {
     const project = join(tempRoot, 'project')
-    await writeProjectConfig(project, '{ "pty": { "completionNotification": { "mode": "queue" } } }')
-    let queue: SessionCompletionNotificationQueue | undefined
+    const prompts: Array<Record<string, unknown>> = []
+    let manager: SessionCompletionNotificationManager | undefined
     const pluginFactory = createZellijPtyPlugin({
       createCompletionNotifications: (context) => {
-        queue = new SessionCompletionNotificationQueue(context)
-        return queue
+        manager = new SessionCompletionNotificationManager(context)
+        return manager
       },
     })
 
-    const plugin = await pluginFactory(pluginInput(project), {}) as {
-      'chat.message'?: (input: { sessionID: string }, output: { message: unknown, parts: Array<{ type: string, text?: string }> }) => Promise<unknown>
-      chat?: unknown
-    }
-    const session = {
-      id: 'zpty_1',
-      openCodeSessionId: 'session_a',
-      paneId: 'terminal_1',
-      title: 'queued demo',
-      command: 'bash',
-      args: [],
-      cwd: process.cwd(),
-      status: 'terminal' as const,
-      lineCount: 0,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      allowAgentInput: true,
-      humanInputOnly: false,
-      exitCode: null,
-      exitedAt: null,
-      exitCodeToken: null,
-      tombstone: null,
-    }
-
-    await queue?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })
-    const input = { sessionID: 'session_a' }
-    const originalMessage = { role: 'user', content: 'hello' }
-    const output = { message: originalMessage, parts: [{ type: 'text', text: 'hello' }] }
-
-    expect(typeof plugin['chat.message']).toBe('function')
-    expect(plugin.chat).toBeUndefined()
-
-    await plugin['chat.message']?.(input, output)
-
-    expect(output.parts[0]).toEqual({ type: 'text', text: '[OpenCode] Zellij PTY completion notice\n- zpty_1 (terminal_1) 已完成，請使用 zellij_pty_read 讀取最終輸出並清理 pane。' })
-    expect(output.parts[1]).toEqual({ type: 'text', text: 'hello' })
-    expect(output.message).toBe(originalMessage)
-    expect(input).toEqual({ sessionID: 'session_a' })
-  })
-
-  it('does not inject a queued completion notice after queue+toast delivers an active prompt', async () => {
-    const project = join(tempRoot, 'project')
-    const prompts: unknown[] = []
-    const toasts: unknown[] = []
-    let queue: SessionCompletionNotificationQueue | undefined
-    const pluginFactory = createZellijPtyPlugin({
-      createCompletionNotifications: (context) => {
-        queue = new SessionCompletionNotificationQueue(context)
-        return queue
-      },
-    })
-
-    const plugin = await pluginFactory(pluginInput(project, {
+    await pluginFactory(pluginInput(project, {
       client: {
         session: {
-          status: async () => ({ data: { session_a: { type: 'idle' } } }),
-          prompt: async (request: unknown) => {
+          promptAsync: async (request: Record<string, unknown>) => {
             prompts.push(request)
           },
         },
-        tui: {
-          showToast: async (payload: unknown) => {
-            toasts.push(payload)
+      },
+    }), {})
+
+    const session = {
+      id: 'zpty_prompt_test',
+      openCodeSessionId: 'session_a',
+      paneId: 'terminal_prompt',
+      title: 'prompt test',
+      command: 'bash',
+      args: [],
+      cwd: process.cwd(),
+      status: 'terminal' as const,
+      lineCount: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      allowAgentInput: true,
+      humanInputOnly: false,
+      exitCode: 0,
+      exitedAt: null,
+      exitCodeToken: null,
+      tombstone: null,
+    }
+
+    // Trigger the terminal event through the manager that the plugin
+    // constructed. The factory captured it via the closure above.
+    await manager?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })
+
+    expect(prompts).toHaveLength(1)
+    const prompt = prompts[0] as { sessionID: string, parts: Array<{ type: string, text: string }> }
+    expect(prompt.sessionID).toBe('session_a')
+    expect(prompt.parts[0]?.type).toBe('text')
+    expect(prompt.parts[0]?.text).toContain('[zellij_pty]')
+    expect(prompt.parts[0]?.text).toContain('terminal_prompt')
+    expect(prompt.parts[0]?.text).toContain('exit=0')
+    expect(prompt.parts[0]?.text).toContain('zellij_pty_read')
+    expect(prompt.parts[0]?.text).toContain('zellij_pty_kill')
+  })
+
+  it('falls back to client.session.prompt when promptAsync is unavailable', async () => {
+    const project = join(tempRoot, 'project')
+    const prompts: Array<Record<string, unknown>> = []
+    let manager: SessionCompletionNotificationManager | undefined
+    const pluginFactory = createZellijPtyPlugin({
+      createCompletionNotifications: (context) => {
+        manager = new SessionCompletionNotificationManager(context)
+        return manager
+      },
+    })
+    await pluginFactory(pluginInput(project, {
+      client: {
+        session: {
+          prompt: async (request: Record<string, unknown>) => {
+            prompts.push(request)
           },
         },
       },
-    }), {}) as {
-      'chat.message'?: (input: { sessionID: string }, output: { message: unknown, parts: Array<{ type: string, text?: string }> }) => Promise<unknown>
-    }
+    }), {})
+
     const session = {
-      id: 'zpty_2',
-      openCodeSessionId: 'session_a',
-      paneId: 'terminal_2',
-      title: 'prompt demo',
+      id: 'zpty_fallback',
+      openCodeSessionId: 'session_b',
+      paneId: 'terminal_fallback',
+      title: 'fallback test',
       command: 'bash',
       args: [],
       cwd: process.cwd(),
@@ -150,14 +146,55 @@ describe('ZellijPtyPlugin', () => {
       tombstone: null,
     }
 
-    await queue?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })
-
-    const output = { message: { role: 'user', content: 'hello' }, parts: [{ type: 'text', text: 'hello' }] }
-    await plugin['chat.message']?.({ sessionID: 'session_a' }, output)
+    await manager?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })
 
     expect(prompts).toHaveLength(1)
-    expect(toasts).toHaveLength(1)
-    expect(output.parts).toEqual([{ type: 'text', text: 'hello' }])
+  })
+
+  it('logs and continues when the prompt call rejects (e.g. MessageAbortedError)', async () => {
+    const project = join(tempRoot, 'project')
+    let manager: SessionCompletionNotificationManager | undefined
+    const pluginFactory = createZellijPtyPlugin({
+      createCompletionNotifications: (context) => {
+        manager = new SessionCompletionNotificationManager(context)
+        return manager
+      },
+    })
+
+    // Should not throw; should just log.
+    await pluginFactory(pluginInput(project, {
+      client: {
+        session: {
+          promptAsync: async () => {
+            const err = new Error('Request aborted') as Error & { name: string }
+            err.name = 'MessageAbortedError'
+            throw err
+          },
+        },
+      },
+    }), {})
+
+    const session = {
+      id: 'zpty_aborted',
+      openCodeSessionId: 'session_c',
+      paneId: 'terminal_aborted',
+      title: 'aborted test',
+      command: 'bash',
+      args: [],
+      cwd: process.cwd(),
+      status: 'terminal' as const,
+      lineCount: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      allowAgentInput: true,
+      humanInputOnly: false,
+      exitCode: null,
+      exitedAt: null,
+      exitCodeToken: null,
+      tombstone: null,
+    }
+
+    await expect(manager?.handleSessionTerminal({ sessionId: session.id, reason: 'exit_marker', session })).resolves.toBeUndefined()
   })
 
   it('does not call client.session.status during startup or relevant event handling when tab title enabled', async () => {
@@ -216,5 +253,19 @@ describe('ZellijPtyPlugin', () => {
     const hooks = (await createZellijPtyPlugin()(pluginInput(project), {})) as { tool?: Record<string, unknown> }
 
     expect(hooks.tool).toBeUndefined()
+  })
+
+  it('always wires the completion manager because pane-completion is unconditional', async () => {
+    const project = join(tempRoot, 'project')
+    const createNotificationsCalls: unknown[] = []
+    await createZellijPtyPlugin({
+      createCompletionNotifications: (context) => {
+        createNotificationsCalls.push(context)
+        return new SessionCompletionNotificationManager(context)
+      },
+    })(pluginInput(project, {
+      client: { session: { promptAsync: async () => {} } },
+    }), {})
+    expect(createNotificationsCalls).toHaveLength(1)
   })
 })

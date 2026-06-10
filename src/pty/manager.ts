@@ -88,7 +88,6 @@ export class SessionManager {
         terminalAt: now,
         tail: (input.tail ?? []).slice(-tombstoneTailLimit),
         paneClosedAt: null,
-        notificationSentAt: null,
       }
 
       session.status = 'terminal'
@@ -119,18 +118,6 @@ export class SessionManager {
       return session
     if (!session.tombstone.paneClosedAt) {
       session.tombstone.paneClosedAt = now
-      session.updatedAt = now
-    }
-    return session
-  }
-
-  markTerminalNotificationSent(id: string): PtySession {
-    const session = this.get(id)
-    const now = new Date().toISOString()
-    if (!session.tombstone)
-      return session
-    if (!session.tombstone.notificationSentAt) {
-      session.tombstone.notificationSentAt = now
       session.updatedAt = now
     }
     return session

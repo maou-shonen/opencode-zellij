@@ -353,30 +353,21 @@ integration('real Zellij pane run integration', () => {
     }
   }, integrationTimeoutMs)
 
-  it('delivers active completion prompts for short-lived panes without queueing duplicate chat notices', async () => {
+  it('calls client.session.promptAsync when a pane exits so the agent wakes immediately', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const prompts: Array<Record<string, unknown>> = []
-      const toasts: Array<Record<string, unknown>> = []
-      const client = {
-        session: {
-          status: async () => ({ data: { 'integration-session': { type: 'idle' } } }),
-          prompt: async (request: Record<string, unknown>) => {
-            prompts.push(request)
-          },
-        },
-        tui: {
-          showToast: async (payload: Record<string, unknown>) => {
-            toasts.push(payload)
-          },
-        },
-      }
       const hooks = await loadPlugin({
         directory: projectRoot,
         worktree: projectRoot,
-        client,
-      }) as Awaited<ReturnType<typeof loadPlugin>> & {
-        'chat.message'?: (input: { sessionID: string }, output: { message: unknown, parts: Array<{ type: string, text?: string }> }) => Promise<void>
-      }
+        client: {
+          session: {
+            status: async () => ({ data: {} }),
+            promptAsync: async (request: Record<string, unknown>) => {
+              prompts.push(request)
+            },
+          },
+        },
+      })
       const ctx = context()
       ctx.sessionID = 'integration-session'
       let sessionID: string | undefined
@@ -386,62 +377,152 @@ integration('real Zellij pane run integration', () => {
           await getTool(hooks, 'zellij_pty_spawn').execute(
             {
               command: 'bash',
-              args: ['-lc', 'echo prompt-delivery-ready; sleep 0.2'],
+              args: ['-lc', 'echo completion-ready; sleep 0.2'],
               cwd: projectRoot,
-              probe: { type: 'output', grep: 'prompt-delivery-ready', timeoutSeconds: 5 },
+              probe: { type: 'output', grep: 'completion-ready', timeoutSeconds: 5 },
               maxLines: 50,
             },
             ctx,
           ),
         )
-
         sessionID = typeof spawned.session?.id === 'string' ? spawned.session.id : undefined
-        expect(sessionID).toBeDefined()
         if (!sessionID)
           throw new Error('Expected spawned pane session id')
-
         expect(spawned.probe.ok).toBe(true)
 
         const settled = await waitFor(
-          async () => ({
-            list: JSON.parse(await getTool(hooks, 'zellij_pty_list').execute({}, ctx)),
-            promptCount: prompts.length,
-          }),
-          ({ list, promptCount }) => {
-            const session = Array.isArray(list.sessions)
-              ? list.sessions.find((entry: Record<string, unknown>) => entry.id === sessionID)
+          async () => {
+            const list = JSON.parse(await getTool(hooks, 'zellij_pty_list').execute({}, ctx))
+            const entry = Array.isArray(list.sessions)
+              ? list.sessions.find((e: Record<string, unknown>) => e.id === sessionID)
               : undefined
-            return promptCount === 1 && session?.status === 'exited'
+            return { status: entry?.status, entry }
           },
+          ({ status }) => status === 'exited',
+        )
+        const entry = settled.entry
+        expect(entry?.status).toBe('exited')
+
+        // Wait for the prompt to land.
+        await waitFor(
+          async () => prompts.length,
+          (count) => count >= 1,
+          { timeoutMs: 5_000 },
         )
 
-        const listedSession = settled.list.sessions.find((entry: Record<string, unknown>) => entry.id === sessionID)
-        expect(listedSession).toBeDefined()
-        expect(listedSession?.status).toBe('exited')
         expect(prompts).toHaveLength(1)
-        expect(toasts).toHaveLength(1)
-        expect(prompts[0]).toEqual({
-          path: { id: 'integration-session' },
-          body: {
-            parts: [{ type: 'text', text: 'A Zellij PTY session completed. Review the finished pane if needed.' }],
-          },
-        })
-
-        const output = {
-          message: { role: 'user', content: 'hello' },
-          parts: [{ type: 'text', text: 'hello' }],
+        const [prompt] = prompts
+        // sessionID on the request must match the OpenCode session that owned the pane.
+        const openCodeSessionID = String(entry?.openCodeSessionId ?? '')
+        if (openCodeSessionID) {
+          expect((prompt as { sessionID?: string }).sessionID).toBe(openCodeSessionID)
         }
-
-        await hooks['chat.message']?.({ sessionID: 'integration-session' }, output)
-
-        expect(output.parts).toEqual([{ type: 'text', text: 'hello' }])
-        expect(prompts).toHaveLength(1)
+        const body = JSON.stringify(prompt)
+        expect(body).toContain('[zellij_pty]')
+        expect(body).toContain(String(entry?.paneId ?? ''))
+        expect(body).toContain('exit=0')
+        expect(body).toContain('zellij_pty_read')
+        expect(body).toContain('zellij_pty_kill')
       }
       finally {
         if (sessionID)
           await killQuietly(hooks, sessionID, ctx)
         await disposeQuietly(hooks)
       }
-    }, { configContent: '{ "tabTitle": { "enabled": true }, "pty": { "completionNotification": { "mode": "queue+toast", "prompt": { "requireIdle": true, "cooldownMs": 30000, "maxAttempts": 1 } } } }' })
+    }, { configContent: '{ "tabTitle": { "enabled": true } }' })
+  }, integrationTimeoutMs)
+
+  it('falls back to client.session.prompt when promptAsync is unavailable', async () => {
+    await withTempGitProject(async (projectRoot: string) => {
+      const prompts: Array<Record<string, unknown>> = []
+      const hooks = await loadPlugin({
+        directory: projectRoot,
+        worktree: projectRoot,
+        client: {
+          session: {
+            status: async () => ({ data: {} }),
+            prompt: async (request: Record<string, unknown>) => {
+              prompts.push(request)
+              return { data: undefined, error: undefined, request, response: undefined }
+            },
+          },
+        },
+      })
+      const ctx = context()
+      ctx.sessionID = 'session-fallback'
+      let sessionID: string | undefined
+
+      try {
+        const spawned = JSON.parse(
+          await getTool(hooks, 'zellij_pty_spawn').execute(
+            {
+              command: 'bash',
+              args: ['-lc', 'echo fallback-ready; sleep 0.2'],
+              cwd: projectRoot,
+              probe: { type: 'output', grep: 'fallback-ready', timeoutSeconds: 5 },
+              maxLines: 50,
+            },
+            ctx,
+          ),
+        )
+        sessionID = typeof spawned.session?.id === 'string' ? spawned.session.id : undefined
+        if (!sessionID)
+          throw new Error('Expected spawned pane session id')
+
+        await waitFor(
+          async () => {
+            const list = JSON.parse(await getTool(hooks, 'zellij_pty_list').execute({}, ctx))
+            const entry = Array.isArray(list.sessions)
+              ? list.sessions.find((e: Record<string, unknown>) => e.id === sessionID)
+              : undefined
+            return { status: entry?.status }
+          },
+          ({ status }) => status === 'exited',
+        )
+
+        await waitFor(
+          async () => prompts.length,
+          (count) => count >= 1,
+          { timeoutMs: 5_000 },
+        )
+
+        expect(prompts).toHaveLength(1)
+        const body = JSON.stringify(prompts[0])
+        expect(body).toContain('[zellij_pty]')
+      }
+      finally {
+        if (sessionID)
+          await killQuietly(hooks, sessionID, ctx)
+        await disposeQuietly(hooks)
+      }
+    })
+  }, integrationTimeoutMs)
+
+  it('does not call client.session.prompt when no pane exits', async () => {
+    await withTempGitProject(async (projectRoot: string) => {
+      const prompts: Array<Record<string, unknown>> = []
+      const hooks = await loadPlugin({
+        directory: projectRoot,
+        worktree: projectRoot,
+        client: {
+          session: {
+            status: async () => ({ data: {} }),
+            promptAsync: async (request: Record<string, unknown>) => {
+              prompts.push(request)
+            },
+          },
+        },
+      })
+      const ctx = context()
+      ctx.sessionID = 'integration-idle'
+      try {
+        // No spawn, no kill. Wait briefly and assert nothing fired.
+        await new Promise(resolve => setTimeout(resolve, 500))
+        expect(prompts).toHaveLength(0)
+      }
+      finally {
+        await disposeQuietly(hooks)
+      }
+    })
   }, integrationTimeoutMs)
 })

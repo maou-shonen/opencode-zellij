@@ -1,5 +1,5 @@
 import type { Plugin, PluginModule } from '@opencode-ai/plugin'
-import type { CompletionNotificationClient, CompletionNotificationContext, CompletionNotificationManager } from './zellij/completion-notifications.js'
+import type { CompletionNotificationContext, CompletionNotificationManager } from './zellij/completion-notifications.js'
 import type { OpenCodeEventLike } from './zellij/tab-title-events.js'
 import process from 'node:process'
 import { loadConfig } from './config.js'
@@ -14,7 +14,7 @@ import { zellijPtyWriteTool } from './tools/write.js'
 import { debug } from './utils/debug.js'
 import { errorMessage } from './utils/errors.js'
 import { isOpencodeTuiMode } from './utils/runtime.js'
-import { SessionCompletionNotificationQueue } from './zellij/completion-notifications.js'
+import { SessionCompletionNotificationManager } from './zellij/completion-notifications.js'
 import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './zellij/pane-watchdog.js'
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
 import { subscriberManager } from './zellij/subscribe.js'
@@ -115,38 +115,17 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
         })
       : undefined
 
-    const client = input.client
-    const completionNotifications = config.pty.completionNotification.mode === 'off'
-      ? undefined
-      : (dependencies.createCompletionNotifications?.({
-          client: client as CompletionNotificationClient,
-          workspaceRoot,
-          config: config.pty.completionNotification,
-          markSent(sessionId) {
-            try {
-              sessionManager.markTerminalNotificationSent(sessionId)
-            }
-            catch (error) {
-              debug('mark terminal notification sent failed', errorMessage(error))
-            }
-          },
-        }) ?? new SessionCompletionNotificationQueue({
-          client: client as CompletionNotificationClient,
-          workspaceRoot,
-          config: config.pty.completionNotification,
-          markSent(sessionId) {
-            try {
-              sessionManager.markTerminalNotificationSent(sessionId)
-            }
-            catch (error) {
-              debug('mark terminal notification sent failed', errorMessage(error))
-            }
-          },
-        }))
-
-    subscriberManager.setLifecycleHooks(completionNotifications
-      ? { onSessionTerminal: event => void completionNotifications.handleSessionTerminal(event).catch(error => debug('completion notification lifecycle hook failed', errorMessage(error))) }
-      : undefined)
+    const completionNotifications = dependencies.createCompletionNotifications?.({
+      client: { session: input.client?.session },
+      serverUrl: input.serverUrl,
+    }) ?? new SessionCompletionNotificationManager({
+      client: { session: input.client?.session },
+      serverUrl: input.serverUrl,
+    })
+    subscriberManager.setLifecycleHooks({
+      onSessionTerminal: event => void completionNotifications.handleSessionTerminal(event)
+        .catch(error => debug('completion notification lifecycle hook failed', errorMessage(error))),
+    })
 
     // Best-effort initial render; no-op when not inside a real Zellij pane.
     if (actor) {
@@ -164,8 +143,7 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
           tabTitleManager.scheduleUpdate()
         }
         if (event.type === 'server.instance.disposed' || event.type === 'global.disposed') {
-          completionNotifications?.clearAll()
-          completionNotifications?.dispose()
+          completionNotifications.dispose()
           subscriberManager.setLifecycleHooks(undefined)
         }
 
@@ -175,20 +153,10 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
             return
 
           const sessions = sessionManager.listByOpenCodeSession(sessionID)
-          for (const session of sessions)
-            completionNotifications?.clearSession(session.id)
           await Promise.all(sessions.map(session => cleanupDeletedSession(session.id)))
         }
       },
-      'chat.message': async (
-        _input: unknown,
-        output: { message: unknown, parts: Array<Record<string, unknown> & { type: string }> },
-      ) => {
-        const injected = completionNotifications?.injectQueuedChatMessage(output) ?? output
-        if (injected !== output && injected && typeof injected === 'object' && Array.isArray((injected as { parts?: unknown }).parts))
-          output.parts = (injected as { parts: Array<Record<string, unknown> & { type: string }> }).parts
-      },
-      'tool': config.pty.enabled
+      tool: config.pty.enabled
         ? {
             ...createPtyTools(config.pty.cleanupExitedPaneOnRead),
             ...(config.pty.sudoPane === 'hide' ? {} : { zellij_pty_request_sudo: requestSudoTool }),

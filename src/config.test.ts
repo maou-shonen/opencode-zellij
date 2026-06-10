@@ -33,14 +33,6 @@ describe('plugin config', () => {
     const result = await loadConfig({ directory: join(tempRoot, 'project') })
     expect(result.config).toEqual(defaultConfig)
     expect(result.config.pty.cleanupExitedPaneOnRead).toBe(true)
-    expect(result.config.pty.completionNotification).toEqual({
-      mode: 'queue+toast',
-      prompt: {
-        requireIdle: true,
-        cooldownMs: 30_000,
-        maxAttempts: 1,
-      },
-    })
     expect(result.sources).toEqual({})
   })
 
@@ -50,10 +42,6 @@ describe('plugin config', () => {
       "tabTitle": { "enabled": false, "emojiIdle": "U" },
       "pty": {
         "cleanupExitedPaneOnRead": false,
-        "completionNotification": {
-          "mode": "queue",
-          "prompt": { "requireIdle": false, "maxAttempts": 5 }
-        },
         "sudoPane": "deny"
       }
     }`)
@@ -61,11 +49,7 @@ describe('plugin config', () => {
       "tabTitle": { "emojiIdle": "P", "emojiRunning": "R" },
       "pty": {
         "enabled": false,
-        "cleanupExitedPaneOnRead": true,
-        "completionNotification": {
-          "mode": "toast",
-          "prompt": { "cooldownMs": 1200 }
-        }
+        "cleanupExitedPaneOnRead": true
       }
     }`)
 
@@ -77,32 +61,6 @@ describe('plugin config', () => {
     expect(result.config.pty.enabled).toBe(false)
     expect(result.config.pty.cleanupExitedPaneOnRead).toBe(true)
     expect(result.config.pty.sudoPane).toBe('deny')
-    expect(result.config.pty.completionNotification.mode).toBe('toast')
-    expect(result.config.pty.completionNotification.prompt.requireIdle).toBe(false)
-    expect(result.config.pty.completionNotification.prompt.cooldownMs).toBe(1200)
-    expect(result.config.pty.completionNotification.prompt.maxAttempts).toBe(5)
-  })
-
-  it('fills partial completion notification overrides with defaults', async () => {
-    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', `{
-      "pty": {
-        "completionNotification": {
-          "mode": "prompt",
-          "prompt": { "maxAttempts": 1 }
-        }
-      }
-    }`)
-
-    const result = await loadConfig({ directory: join(tempRoot, 'project') })
-
-    expect(result.config.pty.completionNotification).toEqual({
-      mode: 'prompt',
-      prompt: {
-        requireIdle: true,
-        cooldownMs: 30_000,
-        maxAttempts: 1,
-      },
-    })
   })
 
   it('supports sudo pane modes', async () => {
@@ -161,28 +119,6 @@ describe('plugin config', () => {
     const result = await loadConfig({ directory: join(tempRoot, 'project') })
 
     expect(result.config.tabTitle.emojiIdle).toBe('U')
-    expect(result.sources.project).toBeUndefined()
-    expect(result.warnings.some(warning => warning.includes('invalid config shape'))).toBe(true)
-  })
-
-  it('rejects invalid completion notification mode', async () => {
-    await writeConfig(join(tempRoot, 'xdg', 'opencode'), 'opencode-zellij.config.jsonc', '{ "pty": { "completionNotification": { "mode": "queue" } } }')
-    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', '{ "pty": { "completionNotification": { "mode": "email" } } }')
-
-    const result = await loadConfig({ directory: join(tempRoot, 'project') })
-
-    expect(result.config.pty.completionNotification.mode).toBe('queue')
-    expect(result.sources.project).toBeUndefined()
-    expect(result.warnings.some(warning => warning.includes('invalid config shape'))).toBe(true)
-  })
-
-  it('rejects legacy completion notification enabled fields', async () => {
-    await writeConfig(join(tempRoot, 'xdg', 'opencode'), 'opencode-zellij.config.jsonc', '{ "pty": { "completionNotification": { "mode": "toast" } } }')
-    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', '{ "pty": { "completionNotification": { "enabled": true } } }')
-
-    const result = await loadConfig({ directory: join(tempRoot, 'project') })
-
-    expect(result.config.pty.completionNotification.mode).toBe('toast')
     expect(result.sources.project).toBeUndefined()
     expect(result.warnings.some(warning => warning.includes('invalid config shape'))).toBe(true)
   })

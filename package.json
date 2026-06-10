@@ -34,8 +34,11 @@
     "prepack": "bun run build"
   },
   "dependencies": {
+    "@loglayer/transport-log-file-rotation": "^3.2.0",
     "@opencode-ai/plugin": "latest",
     "confbox": "^0.2.4",
+    "loglayer": "^9.3.0",
+    "serialize-error": "^13.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

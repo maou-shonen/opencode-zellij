@@ -41,10 +41,6 @@ export function generateJsonSchema(): JsonObject {
   setDefault(schema, ['pty', 'enabled'], defaultConfig.pty.enabled)
   setDefault(schema, ['pty', 'cleanupExitedPaneOnRead'], defaultConfig.pty.cleanupExitedPaneOnRead)
   setDefault(schema, ['pty', 'sudoPane'], defaultConfig.pty.sudoPane)
-  setDefault(schema, ['pty', 'completionNotification', 'mode'], defaultConfig.pty.completionNotification.mode)
-  setDefault(schema, ['pty', 'completionNotification', 'prompt', 'requireIdle'], defaultConfig.pty.completionNotification.prompt.requireIdle)
-  setDefault(schema, ['pty', 'completionNotification', 'prompt', 'cooldownMs'], defaultConfig.pty.completionNotification.prompt.cooldownMs)
-  setDefault(schema, ['pty', 'completionNotification', 'prompt', 'maxAttempts'], defaultConfig.pty.completionNotification.prompt.maxAttempts)
 
   return schema
 }

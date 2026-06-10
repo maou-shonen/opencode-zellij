@@ -98,6 +98,18 @@ OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝，�
 
 Title 會 best-effort 根據 OpenCode session、question、permission 與 branch events 更新。
 
+## Pane 完成事件
+
+當 plugin 建立的 pane 結束時，plugin 會立刻呼叫 `client.session.promptAsync()`（找不到時 fallback 到 `client.session.prompt()`）對擁有該 pane 的 OpenCode session 主動推一則通知，讓 agent 馬上醒過來並看到類似：
+
+```text
+[zellij_pty] pane terminal_742 exit=0 — call zellij_pty_read to read, then zellij_pty_kill to close.
+```
+
+每一個 pane 的 terminal event 只會觸發一次 prompt（用 `paneId` + `event.id` 去重），即使 process exit 之後又收到 pane close 也只會送一次。Plugin 只會對擁有該 pane 的 session 發送 prompt——其他 session 完全不會被影響。
+
+如果 `client.session.prompt` 拒絕（例如 session 正在忙、收到 `MessageAbortedError`），plugin 會用 debug 層級 log 然後繼續，不重試。Prompt 的排程交給 OpenCode server 處理。
+
 ## Pane cleanup watchdog
 
 當 plugin 建立 pane 時，也會為該 OpenCode plugin instance 啟動一個小型 detached Node.js watchdog process。watchdog 會把 per-instance registry 放在 `$XDG_RUNTIME_DIR/opencode-zellij-*`（或系統 temp directory），監控擁有該 registry 的 OpenCode process，並在 OpenCode 還沒來得及執行正常 plugin cleanup 就退出時關閉 plugin 建立的 panes，例如使用 Ctrl-D 離開。

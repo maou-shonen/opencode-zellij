@@ -22,7 +22,6 @@ export function publicSession(session: PtySession): Record<string, unknown> {
           terminalAt: session.tombstone.terminalAt,
           tailLines: session.tombstone.tail.length,
           paneClosedAt: session.tombstone.paneClosedAt,
-          notificationSentAt: session.tombstone.notificationSentAt,
         }
       : null,
   }
