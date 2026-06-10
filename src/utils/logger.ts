@@ -34,11 +34,14 @@ function buildRootLogger(): LogLayer | null {
   }
 
   try {
-    // Note: do NOT pass `dateFormat` here — file-stream-rotator auto-appends
-    // a YMD suffix when `frequency: 'daily'` is set, and adding `dateFormat`
-    // would result in a doubled suffix like `debug.log.20260610.20260610`.
+    // The filename must contain `%DATE%` and the date format must be set
+    // to a value file-stream-rotator accepts. Without `%DATE%` it auto-
+    // appends one and logs to stderr; without an explicit `dateFormat`
+    // it falls back to 'YMD' and logs a warning to stderr. Both are
+    // unwanted at plugin startup.
     const transport = new LogFileRotationTransport({
-      filename,
+      filename: filename.includes('%DATE%') ? filename : `${filename}-%DATE%`,
+      dateFormat: 'YMD',
       size: '1M',
       maxLogs: '7d',
       frequency: 'daily',
