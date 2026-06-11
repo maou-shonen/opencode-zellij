@@ -29,7 +29,7 @@
     "test:integration": "bun run build && RUN_ZELLIJ_INTEGRATION=1 bun test tests/integration",
     "test:e2e": "bun run build && RUN_ZELLIJ_E2E=1 bun test tests/e2e/*.run.test.ts tests/e2e/*.tui.test.ts",
     "test:e2e:ci-pane": "bun test tests/e2e/ci-pane.test.ts",
-    "test:e2e:act": "act -j e2e -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest",
+    "test:e2e:act": "act -j e2e -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-24.04",
     "publish:preview": "pkg-pr-new publish --bun",
     "prepack": "bun run build"
   },

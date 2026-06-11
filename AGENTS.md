@@ -29,7 +29,10 @@ mise run test-e2e
 ## Validation expectations
 
 - `mise run check` is the default quality gate. It covers typecheck, lint, unit tests, and build.
-- `mise run test-e2e` is the single public E2E entrypoint. Locally it replays the GitHub Actions `e2e` job with `act`; inside GitHub Actions or an `act` runner it runs the pane-orchestration E2E coverage, and the pane itself runs the native real-environment E2E suite including TUI coverage.
+- `mise run test-e2e` is the single public E2E entrypoint. **Do not run `bun run test:e2e` directly** — the suite is meant to be replayed through the `act` task defined in `mise.toml`. Locally `mise run test-e2e` shells out to `act -j e2e`, which reuses the GitHub Actions `e2e` job definition (start a dedicated Zellij session, run `mise run test-integration`, then the pane-orchestration E2E coverage; the pane itself runs the native real-environment E2E suite including TUI coverage). Inside GitHub Actions or an `act` runner it short-circuits `act` and runs the pane-side suite directly.
+- **Never bypass `act` for E2E.** Do not invoke `bun test tests/e2e/...` (with or without `RUN_ZELLIJ_E2E=1`) as a stand-in for `mise run test-e2e`, even when `act` is too expensive or slow in the current environment. `act` is the only path that exercises the same job definition CI runs, and ad‑hoc invocations can pass locally while diverging from the CI contract. If the local environment cannot run `act` (e.g. no Docker daemon, not enough disk for the `ubuntu:act-24.04` image), report that as a blocker instead of substituting a different command.
+- The act runner image is pinned to `ghcr.io/catthehacker/ubuntu:act-24.04` (the medium-size variant that `nektos/act` recommends, smaller than the `act-latest` full-runner image and aligned with CI's `ubuntu-latest` = Ubuntu 24.04). Update `package.json` if the CI runner image changes.
+- `act` is part of the toolchain (declared in `mise.toml` `[tools]`), so `mise install` provides it. If you change the `e2e` job shape, keep `mise run test-e2e` as the only documented way to invoke it.
 - `mise run test-integration` is targeted real Zellij integration coverage for plugin loading, pane lifecycle, cleanup, and tool wiring changes.
 - Zellij-backed tests require running inside Zellij or setting `ZELLIJ_SESSION_NAME` to a live session.
 
