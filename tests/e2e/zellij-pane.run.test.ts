@@ -43,7 +43,7 @@ async function reserveLocalPort(): Promise<number> {
   })
 }
 
-async function listPtySessions(hooks: Awaited<ReturnType<typeof loadPlugin>>, ctx: ReturnType<typeof context>): Promise<{ sessions: Array<Record<string, unknown>> }> {
+async function listPtySessions(hooks: Awaited<ReturnType<typeof loadPlugin>>, ctx: ReturnType<typeof context>): Promise<{ sessions: Array<Record<string, unknown>>, completedPaneIds: string[], completedPanes: Array<Record<string, unknown>> }> {
   return JSON.parse(await getTool(hooks, 'zellij_pty_list').execute({}, ctx))
 }
 
@@ -279,6 +279,71 @@ integration('real Zellij pane run integration', () => {
     finally {
       if (sessionID)
         await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
+
+  it('surfaces already-completed panes in later spawn and list responses', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    const sessionIDs: string[] = []
+
+    try {
+      const first = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'bash',
+            args: ['-lc', 'echo completed-pane-hint-ready; exit 0'],
+            probe: { type: 'output', grep: 'completed-pane-hint-ready', timeoutSeconds: 5 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+      const firstID = typeof first.session?.id === 'string' ? first.session.id : undefined
+      if (!firstID)
+        throw new Error('Expected first spawn session id')
+      sessionIDs.push(firstID)
+
+      await waitFor(
+        async () => listedSession(await listPtySessions(hooks, ctx), firstID)?.status,
+        status => status === 'exited',
+      )
+
+      const second = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'cat',
+            probe: { type: 'sleep', seconds: 0.2 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+      const secondID = typeof second.session?.id === 'string' ? second.session.id : undefined
+      if (!secondID)
+        throw new Error('Expected second spawn session id')
+      sessionIDs.push(secondID)
+
+      expect(second.completedPaneIds).toContain(firstID)
+      expect(second.completedPanes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: firstID,
+            status: 'exited',
+            reason: 'exit_marker',
+          }),
+        ]),
+      )
+      expect(second.completedPaneIds).not.toContain(secondID)
+
+      const listed = await listPtySessions(hooks, ctx)
+      expect(listed.completedPaneIds).toContain(firstID)
+      expect(listed.completedPaneIds).not.toContain(secondID)
+    }
+    finally {
+      for (const id of sessionIDs)
+        await killQuietly(hooks, id, ctx)
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)

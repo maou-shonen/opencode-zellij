@@ -52,6 +52,27 @@ describe('zellij_pty_list', () => {
     expect(result.sessions).toHaveLength(1)
     expect(result.sessions[0].id).toBe(current.id)
     expect(result.sessions[0].subscriber).toEqual({ hasBuffer: false, active: false, lastExitedAt: null, terminal: false })
+    expect(result.completedPaneIds).toEqual([])
+    expect(result.completedPanes).toEqual([])
+  })
+
+  it('surfaces terminal sessions as completedPaneIds for the same OpenCode session', async () => {
+    const active = createSession('session_a', 'active')
+    const dead = createSession('session_a', 'dead')
+    sessionManager.markExited(dead.id, 0)
+
+    const result = JSON.parse(toolResultText(await zellijPtyListTool.execute({}, context('session_a'))))
+
+    expect(result.sessions.map((s: Record<string, unknown>) => s.id).sort()).toEqual([active.id, dead.id].sort())
+    expect(result.completedPaneIds).toEqual([dead.id])
+    expect(result.completedPanes).toHaveLength(1)
+    expect(result.completedPanes[0]).toMatchObject({
+      id: dead.id,
+      paneId: dead.paneId,
+      status: 'exited',
+      exitCode: 0,
+      reason: 'exit_marker',
+    })
   })
 })
 

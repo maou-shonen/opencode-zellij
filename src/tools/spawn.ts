@@ -7,7 +7,7 @@ import { createOpenCodePaneTitle } from '../utils/pane-title.js'
 import { zellijCli } from '../zellij/cli.js'
 import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
-import { jsonResponse, publicSession } from './format.js'
+import { completedPanesFromSessions, jsonResponse, publicSession } from './format.js'
 import { outputMatches, readOutputSnapshot, validateGrep } from './output.js'
 
 const schema = tool.schema
@@ -73,11 +73,15 @@ export const zellijPtySpawnTool = tool({
     await subscriberManager.start(session)
     const probe = await runProbe(args.probe as Probe | undefined, (grep, ignoreCase) => outputMatches(session.id, grep, ignoreCase))
     const output = readOutputSnapshot(session.id, { maxLines: args.maxLines })
+    const completedPanes = completedPanesFromSessions(
+      sessionManager.listByOpenCodeSession(context.sessionID),
+    )
 
     return jsonResponse({
       session: publicSession(session),
       output,
       probe,
+      ...completedPanes,
     })
   },
 })

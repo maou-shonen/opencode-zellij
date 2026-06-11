@@ -53,3 +53,45 @@ export function publicSession(session: PtySession, options: PublicSessionOptions
 export function jsonResponse(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
+
+/**
+ * Lean summary of a session that already reached its terminal state. Returned
+ * by `spawn` and `list` so agents can spot dead panes that still need to be
+ * closed via `zellij_pty_read` (which triggers cleanup) or `zellij_pty_kill`.
+ */
+export interface PublicCompletedPane {
+  id: string
+  paneId: string
+  status: 'exited' | 'killed' | 'unknown'
+  exitCode: number | null
+  reason: SessionTombstone['reason'] | null
+}
+
+export interface CompletedPanesSummary {
+  completedPaneIds: string[]
+  completedPanes: PublicCompletedPane[]
+}
+
+export function publicCompletedPane(session: PtySession): PublicCompletedPane {
+  const status = session.status === 'terminal' ? 'exited' : session.status
+  const safeStatus: PublicCompletedPane['status'] = status === 'exited' || status === 'killed' || status === 'unknown'
+    ? status
+    : 'unknown'
+  return {
+    id: session.id,
+    paneId: session.paneId,
+    status: safeStatus,
+    exitCode: session.exitCode,
+    reason: session.tombstone?.reason ?? null,
+  }
+}
+
+export function completedPanesFromSessions(sessions: PtySession[]): CompletedPanesSummary {
+  const completedPanes = sessions
+    .filter(session => session.status === 'terminal')
+    .map(publicCompletedPane)
+  return {
+    completedPaneIds: completedPanes.map(pane => pane.id),
+    completedPanes,
+  }
+}

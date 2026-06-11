@@ -1,6 +1,6 @@
 import type { PtySession } from '../pty/session.js'
 import { describe, expect, it } from 'bun:test'
-import { publicSession } from './format.js'
+import { completedPanesFromSessions, publicCompletedPane, publicSession } from './format.js'
 
 function session(): PtySession {
   return {
@@ -86,5 +86,53 @@ describe('tool response formatting', () => {
     }
 
     expect(publicSession(terminal).status).toBe('exited')
+  })
+
+  it('summarizes terminal sessions and skips non-terminal ones', () => {
+    const running = session()
+    const terminal = session()
+    terminal.id = 'zpty_done'
+    terminal.paneId = 'terminal_done'
+    terminal.status = 'terminal'
+    terminal.exitCode = 0
+    terminal.exitedAt = '2026-01-01T00:00:01.000Z'
+    terminal.tombstone = {
+      reason: 'exit_marker',
+      terminalAt: '2026-01-01T00:00:01.000Z',
+      tail: [],
+      paneClosedAt: null,
+    }
+
+    const summary = completedPanesFromSessions([running, terminal])
+
+    expect(summary.completedPaneIds).toEqual(['zpty_done'])
+    expect(summary.completedPanes).toEqual([{
+      id: 'zpty_done',
+      paneId: 'terminal_done',
+      status: 'exited',
+      exitCode: 0,
+      reason: 'exit_marker',
+    }])
+  })
+
+  it('coerces non-terminal tombstone statuses to a safe unknown value', () => {
+    const terminal = session()
+    terminal.id = 'zpty_killed'
+    terminal.status = 'killed'
+    terminal.exitCode = 137
+    terminal.tombstone = {
+      reason: 'subscriber_error',
+      terminalAt: '2026-01-01T00:00:01.000Z',
+      tail: [],
+      paneClosedAt: null,
+    }
+
+    expect(publicCompletedPane(terminal)).toEqual({
+      id: 'zpty_killed',
+      paneId: 'terminal_1',
+      status: 'killed',
+      exitCode: 137,
+      reason: 'subscriber_error',
+    })
   })
 })
