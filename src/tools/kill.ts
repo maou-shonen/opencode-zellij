@@ -4,7 +4,7 @@ import { sessionManager } from '../pty/manager.js'
 import { zellijCli } from '../zellij/cli.js'
 import { unregisterPaneFromWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
-import { jsonResponse, nextAdvice, publicSession } from './format.js'
+import { jsonResponse, publicSession } from './format.js'
 import { readOutputSnapshot } from './output.js'
 import { closePaneOrVerifyGone } from './pane-cleanup.js'
 
@@ -21,7 +21,6 @@ export interface KillToolResult {
   paneId?: string | undefined
   session?: ReturnType<typeof publicSession> | undefined
   output?: ReturnType<typeof readOutputSnapshot> | undefined
-  next: ReturnType<typeof nextAdvice>
   warnings: string[]
 }
 
@@ -53,7 +52,6 @@ export async function executeZellijPtyKill(args: { id: string }, dependencies: K
       cleanedUp: false,
       session: publicSession(updated),
       output,
-      next: nextAdvice(true, 'close-pane failed and the pane may still be running; the session was kept so kill can be retried.'),
       warnings,
     }
   }
@@ -87,7 +85,6 @@ async function finalizeKilledSession(
     id: sessionId,
     paneId,
     output,
-    next: nextAdvice(false, 'Session was closed and removed from the in-memory registry.'),
     warnings,
   }
 }

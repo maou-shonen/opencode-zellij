@@ -5,7 +5,7 @@ import { assertWriteSizeAllowed, chunkWriteData } from '../pty/write-data.js'
 import { errorMessage } from '../utils/errors.js'
 import { zellijCli } from '../zellij/cli.js'
 import { subscriberManager } from '../zellij/subscribe.js'
-import { jsonResponse, nextAdvice, publicSession } from './format.js'
+import { jsonResponse, publicSession } from './format.js'
 import { emptyOutputSnapshot, readOutputSnapshot } from './output.js'
 
 const schema = tool.schema
@@ -23,8 +23,7 @@ export const zellijPtyWriteTool = tool({
     if (session.humanInputOnly || !session.allowAgentInput) {
       return jsonResponse({
         session: publicSession(session),
-        output: subscriberManager.has(session.id) ? readOutputSnapshot(session.id, { maxLines: args.maxLines }) : emptyOutputSnapshot(session.lineCount),
-        next: nextAdvice(false, 'This session is human-input-only; the user must type directly in the Zellij pane.'),
+        output: subscriberManager.has(session.id) ? readOutputSnapshot(session.id, { maxLines: args.maxLines }) : emptyOutputSnapshot(),
         warnings: ['Agent writes to human-input-only sessions are forbidden.'],
       })
     }
@@ -63,7 +62,6 @@ export const zellijPtyWriteTool = tool({
     return jsonResponse({
       session: publicSession(session),
       output,
-      next: nextAdvice(true, args.interruptAfterSeconds ? 'Input was sent; Ctrl-C was sent after the requested interrupt timeout if the session was still running.' : 'Input was sent and recent output was observed.'),
       warnings,
     })
   },

@@ -340,10 +340,9 @@ integration('real Zellij pane run integration', () => {
         throw new Error('Expected requested pane session id')
 
       expect(requested.session.humanInputOnly).toBe(true)
-      expect(requested.session.agentWritable).toBe(false)
+      expect(requested.session.agentWritable).toBeUndefined()
 
       const write = JSON.parse(await getTool(hooks, 'zellij_pty_write').execute({ id: sessionID, data: 'SHOULD_NOT_WRITE\n' }, ctx))
-      expect(write.next.retryable).toBe(false)
       expect(write.warnings.join('\n')).toContain('forbidden')
     }
     finally {

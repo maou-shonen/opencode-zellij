@@ -8,7 +8,7 @@ export const zellijPtyListTool = tool({
   args: {},
   async execute(_args, context) {
     const sessions = sessionManager.listByOpenCodeSession(context.sessionID).map(session => ({
-      ...publicSession(session),
+      ...publicSession(session, { includeTombstone: true }),
       subscriber: subscriberManager.status(session.id),
     }))
     return jsonResponse({ sessions })

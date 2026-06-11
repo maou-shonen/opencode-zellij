@@ -3,7 +3,7 @@ import { tool } from '@opencode-ai/plugin'
 import { sessionManager } from '../pty/manager.js'
 import { zellijCli } from '../zellij/cli.js'
 import { subscriberManager } from '../zellij/subscribe.js'
-import { jsonResponse, nextAdvice, publicSession } from './format.js'
+import { jsonResponse, publicSession } from './format.js'
 import { readOutputSnapshot, validateGrep } from './output.js'
 import { closePaneOrVerifyGone } from './pane-cleanup.js'
 
@@ -27,7 +27,6 @@ export interface ReadCleanupResult {
 export interface ReadToolResult {
   session: ReturnType<typeof publicSession>
   output: ReturnType<typeof readOutputSnapshot>
-  next: ReturnType<typeof nextAdvice>
   subscriberActive: boolean
   subscriberLastExitedAt: string | null
   subscriberErrors: string[]
@@ -39,7 +38,6 @@ export interface ReadToolDependencies {
   sessionManager?: Pick<typeof sessionManager, 'get' | 'updateStatus' | 'markTerminalPaneClosed'> | undefined
   subscriberManager?: Pick<typeof subscriberManager, 'status' | 'start' | 'stderr' | 'closeSessionPane'> | undefined
   publicSession?: typeof publicSession | undefined
-  nextAdvice?: typeof nextAdvice | undefined
   readOutputSnapshot?: typeof readOutputSnapshot | undefined
   validateGrep?: typeof validateGrep | undefined
   paneExists?: PaneExistsFn | undefined
@@ -50,7 +48,6 @@ export async function executeZellijPtyRead(args: ReadToolArgs, dependencies: Rea
   const sessionManagerApi = dependencies.sessionManager ?? sessionManager
   const subscriberManagerApi = dependencies.subscriberManager ?? subscriberManager
   const publicSessionApi = dependencies.publicSession ?? publicSession
-  const nextAdviceApi = dependencies.nextAdvice ?? nextAdvice
   const readOutputSnapshotApi = dependencies.readOutputSnapshot ?? readOutputSnapshot
   const validateGrepApi = dependencies.validateGrep ?? validateGrep
   const paneExistsApi = dependencies.paneExists ?? (paneId => zellijCli.paneExists(paneId))
@@ -59,13 +56,12 @@ export async function executeZellijPtyRead(args: ReadToolArgs, dependencies: Rea
   const grepError = validateGrepApi(args.grep)
   if (grepError) {
     return {
-      session: publicSessionApi(session),
-      output: { text: '', lines: [], lineCount: session.lineCount, returned: 0, truncated: false },
-      next: nextAdviceApi(false, `Invalid grep regex: ${grepError}`),
+      session: publicSessionApi(session, { includeTombstone: true }),
+      output: { text: '', lineCount: session.lineCount, truncated: false },
       subscriberActive: false,
       subscriberLastExitedAt: null,
       subscriberErrors: [],
-      warnings: [],
+      warnings: [`Invalid grep regex: ${grepError}`],
       cleanup: { requested: false, performed: false, alreadyClosed: false },
     }
   }
@@ -94,9 +90,8 @@ export async function executeZellijPtyRead(args: ReadToolArgs, dependencies: Rea
     warnings.push(cleanup.warning)
 
   return {
-    session: publicSessionApi(session),
+    session: publicSessionApi(session, { includeTombstone: true }),
     output,
-    next: nextAdviceApi(!isCompletedSession(session.status), nextReadReason(session.status)),
     subscriberActive: statusAfterStart.active,
     subscriberLastExitedAt: statusAfterStart.lastExitedAt,
     subscriberErrors: subscriberManagerApi.stderr(session.id),
@@ -164,14 +159,4 @@ export const zellijPtyReadTool = createZellijPtyReadTool()
 
 function isCompletedSession(status: string): boolean {
   return status === 'terminal' || status === 'exited' || status === 'killed'
-}
-
-function nextReadReason(status: string): string {
-  if (status === 'terminal')
-    return 'Session has finished; the final output is retained until the completed pane is read and cleaned up.'
-  if (status === 'running')
-    return 'Session is still running; read again later if more output is expected.'
-  if (status === 'unknown')
-    return 'Session state is unknown because the subscriber is inactive; output may be stale, but retrying read may restart observation.'
-  return 'Session is no longer running.'
 }

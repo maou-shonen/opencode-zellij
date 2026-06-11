@@ -6,7 +6,7 @@ import { createOpenCodePaneTitle } from '../utils/pane-title.js'
 import { zellijCli } from '../zellij/cli.js'
 import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
-import { jsonResponse, nextAdvice, publicSession } from './format.js'
+import { jsonResponse, publicSession } from './format.js'
 import { readOutputSnapshot } from './output.js'
 
 const schema = tool.schema
@@ -94,10 +94,8 @@ export const requestSudoTool = tool({
     await subscriberManager.start(session)
 
     return jsonResponse({
-      session: publicSession(session),
+      session: publicSession(session, { agentWritable: false }),
       output: readOutputSnapshot(session.id),
-      next: nextAdvice(false, 'The user must review the summary and commands in Zellij, then type YES and any required credentials directly in the pane.'),
-      warnings: [],
     })
   },
 })

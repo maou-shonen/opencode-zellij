@@ -15,7 +15,7 @@ function cleanup(): void {
 describe('zellij_pty_read', () => {
   afterEach(cleanup)
 
-  it('returns a non-retryable response for invalid grep before starting a subscriber', async () => {
+  it('returns a warning and does not start a subscriber for invalid grep', async () => {
     const session = sessionManager.create({
       openCodeSessionId: 'session_a',
       paneId: 'terminal_1',
@@ -28,8 +28,8 @@ describe('zellij_pty_read', () => {
 
     const result = JSON.parse(toolResultText(await zellijPtyReadTool.execute({ id: session.id, grep: '[' }, testContext())))
 
-    expect(result.next.retryable).toBe(false)
-    expect(result.next.reason).toContain('Invalid grep regex')
+    expect(result.warnings).toContainEqual(expect.stringContaining('Invalid grep regex'))
+    expect(result.next).toBeUndefined()
     expect(subscriberManager.has(session.id)).toBe(false)
   })
 
@@ -163,7 +163,7 @@ function createCompletedReadFixture(
         },
       },
       paneExists: overrides.paneExists ?? (async () => false),
-      readOutputSnapshot: () => ({ text: 'final', lines: ['final'], lineCount: 3, returned: 1, truncated: false }),
+      readOutputSnapshot: () => ({ text: 'final', lineCount: 3, truncated: false, matched: 1 }),
     },
     closeCalls: () => closeCalls,
     markCalls: () => markCalls,

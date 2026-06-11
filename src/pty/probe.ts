@@ -9,7 +9,6 @@ export interface ProbeResult {
   type: Probe['type']
   ok: boolean
   message: string
-  elapsedMs: number
 }
 
 export type OutputProbeReader = (grep: string, ignoreCase: boolean | undefined) => boolean
@@ -19,13 +18,12 @@ const defaultProbeTimeoutSeconds = 20
 const pollIntervalMs = 250
 
 export async function runProbe(probe: Probe | undefined, outputReader: OutputProbeReader): Promise<ProbeResult> {
-  const startedAt = Date.now()
   const effectiveProbe = probe ?? { type: 'sleep', seconds: defaultSleepSeconds }
 
   if (effectiveProbe.type === 'sleep') {
     const seconds = effectiveProbe.seconds ?? defaultSleepSeconds
     await delay(seconds * 1_000)
-    return result(effectiveProbe.type, true, `Slept for ${seconds}s.`, startedAt)
+    return result(effectiveProbe.type, true, `Slept for ${seconds}s.`)
   }
 
   if (effectiveProbe.type === 'output') {
@@ -33,11 +31,11 @@ export async function runProbe(probe: Probe | undefined, outputReader: OutputPro
     const deadline = Date.now() + timeoutSeconds * 1_000
     while (Date.now() <= deadline) {
       if (outputReader(effectiveProbe.grep, effectiveProbe.ignoreCase)) {
-        return result(effectiveProbe.type, true, `Observed output matching /${effectiveProbe.grep}/.`, startedAt)
+        return result(effectiveProbe.type, true, `Observed output matching /${effectiveProbe.grep}/.`)
       }
       await delay(pollIntervalMs)
     }
-    return result(effectiveProbe.type, false, `Timed out after ${timeoutSeconds}s waiting for output matching /${effectiveProbe.grep}/.`, startedAt)
+    return result(effectiveProbe.type, false, `Timed out after ${timeoutSeconds}s waiting for output matching /${effectiveProbe.grep}/.`)
   }
 
   const timeoutSeconds = effectiveProbe.timeoutSeconds ?? defaultProbeTimeoutSeconds
@@ -52,7 +50,7 @@ export async function runProbe(probe: Probe | undefined, outputReader: OutputPro
       const ok = expectStatus === undefined ? response.status >= 200 && response.status < 400 : response.status === expectStatus
       if (ok) {
         const expected = expectStatus === undefined ? '2xx/3xx' : String(expectStatus)
-        return result(effectiveProbe.type, true, `HTTP probe ${effectiveProbe.url} returned expected status ${expected}.`, startedAt)
+        return result(effectiveProbe.type, true, `HTTP probe ${effectiveProbe.url} returned expected status ${expected}.`)
       }
       lastError = `HTTP ${response.status}`
     }
@@ -62,9 +60,9 @@ export async function runProbe(probe: Probe | undefined, outputReader: OutputPro
     await delay(pollIntervalMs)
   }
 
-  return result(effectiveProbe.type, false, `Timed out after ${timeoutSeconds}s probing ${effectiveProbe.url}: ${lastError}.`, startedAt)
+  return result(effectiveProbe.type, false, `Timed out after ${timeoutSeconds}s probing ${effectiveProbe.url}: ${lastError}.`)
 }
 
-function result(type: Probe['type'], ok: boolean, message: string, startedAt: number): ProbeResult {
-  return { type, ok, message, elapsedMs: Date.now() - startedAt }
+function result(type: Probe['type'], ok: boolean, message: string): ProbeResult {
+  return { type, ok, message }
 }

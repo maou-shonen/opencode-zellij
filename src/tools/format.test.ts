@@ -1,6 +1,6 @@
 import type { PtySession } from '../pty/session.js'
 import { describe, expect, it } from 'bun:test'
-import { nextAdvice, publicSession } from './format.js'
+import { publicSession } from './format.js'
 
 function session(): PtySession {
   return {
@@ -24,13 +24,55 @@ function session(): PtySession {
 }
 
 describe('tool response formatting', () => {
-  it('publishes only public session fields', () => {
+  it('publishes only the lean public session fields by default', () => {
     const output = publicSession(session())
 
-    expect(output).toMatchObject({ id: 'zpty_test', paneId: 'terminal_1', agentWritable: true, lineCount: 3 })
+    expect(output).toEqual({
+      id: 'zpty_test',
+      paneId: 'terminal_1',
+      title: 'test',
+      command: 'bash',
+      status: 'running',
+    })
     expect(output).not.toHaveProperty('exitCodeToken')
     expect(output).not.toHaveProperty('openCodeSessionId')
-    expect(output).toHaveProperty('tombstone', null)
+    expect(output).not.toHaveProperty('args')
+    expect(output).not.toHaveProperty('cwd')
+    expect(output).not.toHaveProperty('lineCount')
+    expect(output).not.toHaveProperty('createdAt')
+    expect(output).not.toHaveProperty('updatedAt')
+    expect(output).not.toHaveProperty('agentWritable')
+    expect(output).not.toHaveProperty('humanInputOnly')
+    expect(output).not.toHaveProperty('tombstone')
+  })
+
+  it('only surfaces humanInputOnly when the pane rejects agent writes', () => {
+    const defaultView = publicSession(session())
+    expect(defaultView).not.toHaveProperty('humanInputOnly')
+
+    const sudoView = publicSession(session(), { agentWritable: false })
+    expect(sudoView.humanInputOnly).toBe(true)
+  })
+
+  it('omits tombstone unless includeTombstone is requested', () => {
+    expect(publicSession(session())).not.toHaveProperty('tombstone')
+
+    const exited = session()
+    exited.status = 'exited'
+    exited.tombstone = {
+      reason: 'exit_marker',
+      terminalAt: '2026-01-01T00:00:01.000Z',
+      tail: [],
+      paneClosedAt: null,
+    }
+
+    const summary = publicSession(exited, { includeTombstone: true })
+    expect(summary.tombstone).toEqual({
+      reason: 'exit_marker',
+      terminalAt: '2026-01-01T00:00:01.000Z',
+      tailLines: 0,
+      paneClosedAt: null,
+    })
   })
 
   it('maps internal terminal sessions to the public exited status', () => {
@@ -44,9 +86,5 @@ describe('tool response formatting', () => {
     }
 
     expect(publicSession(terminal).status).toBe('exited')
-  })
-
-  it('builds retry advice', () => {
-    expect(nextAdvice(false, 'stop')).toEqual({ retryable: false, reason: 'stop' })
   })
 })

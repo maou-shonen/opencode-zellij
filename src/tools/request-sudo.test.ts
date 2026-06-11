@@ -28,10 +28,9 @@ describe('zellij_pty_request_sudo no-focus regression guard', () => {
     expect(source).not.toContain('focus-pane-id')
   })
 
-  it('execute response contains warnings field for shape compatibility', () => {
+  it('execute response surfaces humanInputOnly for sudo panes', () => {
     const source = requestSudoTool.execute.toString()
-    expect(source).toContain('warnings')
-    expect(source).toContain('[]')
+    expect(source).toContain('humanInputOnly')
   })
 
   it('human-input-only and agent-non-writable semantics are preserved in review script', () => {

@@ -7,7 +7,7 @@ import { createOpenCodePaneTitle } from '../utils/pane-title.js'
 import { zellijCli } from '../zellij/cli.js'
 import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
-import { jsonResponse, nextAdvice, publicSession } from './format.js'
+import { jsonResponse, publicSession } from './format.js'
 import { outputMatches, readOutputSnapshot, validateGrep } from './output.js'
 
 const schema = tool.schema
@@ -78,8 +78,6 @@ export const zellijPtySpawnTool = tool({
       session: publicSession(session),
       output,
       probe,
-      next: nextAdvice(probe.ok, probe.ok ? 'Probe completed; continue with this session or read later for long-running output.' : probe.message),
-      warnings: ['Registry remains in-memory; restarting OpenCode loses plugin session records.'],
     })
   },
 })
