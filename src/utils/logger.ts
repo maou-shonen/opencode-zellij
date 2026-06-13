@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import process from 'node:process'
 import { LogFileRotationTransport } from '@loglayer/transport-log-file-rotation'
 import { LogLayer } from 'loglayer'
@@ -39,6 +39,11 @@ function buildRootLogger(): LogLayer | null {
     // appends one and logs to stderr; without an explicit `dateFormat`
     // it falls back to 'YMD' and logs a warning to stderr. Both are
     // unwanted at plugin startup.
+    //
+    // `auditFile` is colocated with the rotated log files: file-stream-
+    // rotator otherwise writes its retention audit to the process CWD,
+    // which would drop `audit.json` into whichever directory the plugin
+    // is launched from (e.g. the repo root during local development).
     const transport = new LogFileRotationTransport({
       filename: filename.includes('%DATE%') ? filename : `${filename}-%DATE%`,
       dateFormat: 'YMD',
@@ -46,6 +51,7 @@ function buildRootLogger(): LogLayer | null {
       maxLogs: '7d',
       frequency: 'daily',
       compressOnRotate: true,
+      auditFile: join(dirname(filename), 'audit.json'),
     })
     return new LogLayer({
       errorSerializer: serializeError,
