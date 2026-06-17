@@ -13,7 +13,6 @@ import { zellijPtySpawnTool } from './tools/spawn.js'
 import { zellijPtyWriteTool } from './tools/write.js'
 import { debug } from './utils/debug.js'
 import { errorMessage } from './utils/errors.js'
-import { isOpencodeTuiMode } from './utils/runtime.js'
 import { SessionCompletionNotificationManager } from './zellij/completion-notifications.js'
 import { cleanupStaleWatchdogRegistries, unregisterPaneFromWatchdog } from './zellij/pane-watchdog.js'
 import { registerShutdownCleanup } from './zellij/shutdown-cleanup.js'
@@ -63,17 +62,6 @@ export interface ZellijPtyPluginDependencies {
 
 export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies = {}): Plugin {
   return async (input) => {
-    // Headless `opencode run` has no UI to render toasts, prompts, or
-    // Zellij panes, and the plugin's lifecycle hooks misbehave when the
-    // owning process exits without firing the expected teardown events.
-    // Short-circuit to a no-op outside the TUI so we don't leak watchdogs,
-    // tab-title actors, or completion notifiers into a session that can't
-    // observe them.
-    if (!isOpencodeTuiMode()) {
-      debug('opencode-zellij disabled: not running inside an OpenCode TUI session')
-      return {}
-    }
-
     const { config, warnings } = await loadConfig(input)
     for (const warning of warnings) {
       debug(warning)

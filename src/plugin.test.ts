@@ -8,14 +8,11 @@ import { SessionCompletionNotificationManager } from './zellij/completion-notifi
 describe('ZellijPtyPlugin', () => {
   let tempRoot = ''
   let originalXdgConfigHome: string | undefined
-  let originalProcessRole: string | undefined
 
   beforeEach(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), 'opencode-zellij-plugin-'))
     originalXdgConfigHome = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = join(tempRoot, 'xdg')
-    originalProcessRole = process.env.OPENCODE_PROCESS_ROLE
-    process.env.OPENCODE_PROCESS_ROLE = 'worker'
   })
 
   afterEach(async () => {
@@ -23,10 +20,6 @@ describe('ZellijPtyPlugin', () => {
       delete process.env.XDG_CONFIG_HOME
     else
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-    if (originalProcessRole === undefined)
-      delete process.env.OPENCODE_PROCESS_ROLE
-    else
-      process.env.OPENCODE_PROCESS_ROLE = originalProcessRole
     await rm(tempRoot, { force: true, recursive: true })
   })
 
@@ -225,34 +218,6 @@ describe('ZellijPtyPlugin', () => {
     await plugin.event?.({ event: { type: 'permission.replied', properties: { requestID: 'p1', sessionID: 's1' } } })
 
     expect(statusCallCount).toBe(0)
-  })
-
-  it('short-circuits to a no-op when not running inside an OpenCode TUI session', async () => {
-    const project = join(tempRoot, 'project')
-    const createNotificationsCalls: unknown[] = []
-    const pluginFactory = createZellijPtyPlugin({
-      createCompletionNotifications: (context) => {
-        createNotificationsCalls.push(context)
-        return undefined
-      },
-    })
-
-    // Simulate a headless `opencode run` invocation by clearing the TUI role.
-    delete process.env.OPENCODE_PROCESS_ROLE
-
-    const hooks = await pluginFactory(pluginInput(project), {})
-
-    expect(hooks).toEqual({})
-    expect(createNotificationsCalls).toEqual([])
-  })
-
-  it('does not register PTY tools when not running inside an OpenCode TUI session', async () => {
-    const project = join(tempRoot, 'project')
-    delete process.env.OPENCODE_PROCESS_ROLE
-
-    const hooks = (await createZellijPtyPlugin()(pluginInput(project), {})) as { tool?: Record<string, unknown> }
-
-    expect(hooks.tool).toBeUndefined()
   })
 
   it('always wires the completion manager because pane-completion is unconditional', async () => {

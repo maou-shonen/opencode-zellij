@@ -37,27 +37,12 @@ export function defaultClient(): Record<string, unknown> {
 }
 
 export async function loadPlugin(inputOverrides: { directory?: string, worktree?: string, client?: Record<string, unknown> } = {}): Promise<PluginHooks> {
-  // The e2e harness loads the plugin module directly without going through
-  // opencode's plugin loader, so `OPENCODE_PROCESS_ROLE` is not set the
-  // way it would be inside a real TUI worker. Stub it to "worker" so the
-  // built plugin's TUI mode gate (`isOpencodeTuiMode`) short-circuits open
-  // rather than short-circuiting the plugin to a no-op.
-  const previousProcessRole = process.env.OPENCODE_PROCESS_ROLE
-  process.env.OPENCODE_PROCESS_ROLE = 'worker'
   const mod = (await import(`../../../dist/index.mjs?integration=${Date.now()}`)) as PluginModule
-  try {
-    return await mod.default.server({
-      directory: inputOverrides.directory ?? process.cwd(),
-      worktree: inputOverrides.worktree ?? process.cwd(),
-      client: inputOverrides.client ?? defaultClient(),
-    })
-  }
-  finally {
-    if (previousProcessRole === undefined)
-      delete process.env.OPENCODE_PROCESS_ROLE
-    else
-      process.env.OPENCODE_PROCESS_ROLE = previousProcessRole
-  }
+  return await mod.default.server({
+    directory: inputOverrides.directory ?? process.cwd(),
+    worktree: inputOverrides.worktree ?? process.cwd(),
+    client: inputOverrides.client ?? defaultClient(),
+  })
 }
 
 export function context(): ToolContext {
