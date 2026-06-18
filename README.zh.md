@@ -233,16 +233,14 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`,預設 `true`。為 `true` 時,`zellij_pty_read` 對已退出的 pane 回傳 output 後會關閉該 pane。
-**Spec:** [`src/tools/read.test.ts`](src/tools/read.test.ts) · [`src/config.test.ts`](src/config.test.ts)
 
 **`tabTitle.enabled`** `boolean`,預設 `true`。設為 `false` 時停用動態 tab title。
-**Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts) · [`src/config.test.ts`](src/config.test.ts)
+**Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
 **`tabTitle.emojiIdle` / `emojiRunning` / `emojiNeedsInput` / `emojiBranch`** 字串,預設 `🟢` / `⚡` / `💬` / `🌱`。狀態與 branch 區段的前綴。
-**Spec:** [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts) · [`src/zellij/tab-title-formatter.test.ts`](src/zellij/tab-title-formatter.test.ts)
+**Spec:** [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts)
 
 **`tabTitle.debounceMs`** `number`,預設 `300`。tab title 更新的 debounce 時間(毫秒)。
-**Spec:** [`src/zellij/tab-title.test.ts`](src/zellij/tab-title.test.ts)
 
 ### 範例
 

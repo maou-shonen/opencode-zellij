@@ -233,16 +233,14 @@ Sidecar config files load from `~/.config/opencode/opencode-zellij.config.jsonc`
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`, default `true`. When `true`, `zellij_pty_read` on an exited pane closes the pane after returning output.
-**Spec:** [`src/tools/read.test.ts`](src/tools/read.test.ts) · [`src/config.test.ts`](src/config.test.ts)
 
 **`tabTitle.enabled`** `boolean`, default `true`. Disables dynamic tab title updates when `false`.
-**Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts) · [`src/config.test.ts`](src/config.test.ts)
+**Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
 **`tabTitle.emojiIdle` / `emojiRunning` / `emojiNeedsInput` / `emojiBranch`** Strings, defaults `🟢` / `⚡` / `💬` / `🌱`. Prefixes for the state and branch segments.
-**Spec:** [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts) · [`src/zellij/tab-title-formatter.test.ts`](src/zellij/tab-title-formatter.test.ts)
+**Spec:** [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts)
 
 **`tabTitle.debounceMs`** `number`, default `300`. Debounce window (ms) for tab title updates.
-**Spec:** [`src/zellij/tab-title.test.ts`](src/zellij/tab-title.test.ts)
 
 ### Example
 
