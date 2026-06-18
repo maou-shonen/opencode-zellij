@@ -80,9 +80,9 @@ Returns:
 **Spec:**
 
 - Pull the latest output from a pane, optionally filter it with `grep`, and learn its current state. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- A bad `grep` regex is reported as a warning instead of crashing the read. [`src/tools/read.test.ts`](src/tools/read.test.ts)
+- A bad `grep` regex is reported as a warning instead of crashing the read. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - Read output from a pane that already finished; tell `pane_closed` (killed externally) from `exit_marker` (process exited). [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- Set the cleanup-on-read default globally (`pty.cleanupExitedPaneOnRead`) or per call (tool arg). [`src/tools/read.test.ts`](src/tools/read.test.ts)
+- Set the cleanup-on-read default globally (`pty.cleanupExitedPaneOnRead`) or per call (tool arg). [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - After read closes a finished pane, a second read returns the same close timestamp — useful for telling two reads apart. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### `zellij_pty_write` tool
@@ -183,7 +183,7 @@ Returns (close-pane failed, pane still present):
 - If the pane is already gone, the kill throws — wrap in try/catch for finally blocks (the e2e `killQuietly` helper does this). [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
 - Shut a pane down cleanly: Ctrl-C, brief pause, close-pane. Ctrl-C errors are warnings, not throws. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - If close-pane fails and the pane is still there, the session stays — retry later or read the warning. [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
-- If OpenCode dies before normal cleanup (Ctrl-D), a detached Node.js watchdog closes plugin-created panes so they don't leak. [`src/zellij/pane-watchdog.test.ts`](src/zellij/pane-watchdog.test.ts) · [`tests/e2e/ci-pane.test.ts`](tests/e2e/ci-pane.test.ts)
+- If OpenCode dies before normal cleanup (Ctrl-D), a detached Node.js watchdog closes plugin-created panes so they don't leak. [`tests/e2e/ci-pane.test.ts`](tests/e2e/ci-pane.test.ts)
 
 ### `zellij_pty_request_sudo` tool
 Open a floating, human-input-only review pane that shows the proposed command(s) and waits for the user to type `YES`.
@@ -220,7 +220,6 @@ Update the Zellij tab title to show project, branch, and current OpenCode state.
 **Spec:**
 
 - [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts)
-- [`src/zellij/tab-title.test.ts`](src/zellij/tab-title.test.ts)
 
 ## Configuration
 
@@ -233,6 +232,7 @@ Sidecar config files load from `~/.config/opencode/opencode-zellij.config.jsonc`
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`, default `true`. When `true`, `zellij_pty_read` on an exited pane closes the pane after returning output.
+**Spec:** [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 **`tabTitle.enabled`** `boolean`, default `true`. Disables dynamic tab title updates when `false`.
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)

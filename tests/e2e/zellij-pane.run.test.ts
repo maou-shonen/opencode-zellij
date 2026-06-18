@@ -389,6 +389,46 @@ integration('zellij_pty_read', () => {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
+
+  it('returns a warning for invalid grep regex instead of crashing the read', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+
+    try {
+      const spawned = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'bash',
+            args: ['-lc', 'echo bad-grep-ready'],
+            probe: { type: 'output', grep: 'bad-grep-ready', timeoutSeconds: 5 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+
+      sessionID = typeof spawned.session?.id === 'string' ? spawned.session.id : undefined
+      expect(sessionID).toBeDefined()
+      if (!sessionID)
+        throw new Error('Expected spawned pane session id')
+      const activeSessionID = sessionID
+
+      const result = JSON.parse(
+        await getTool(hooks, 'zellij_pty_read').execute(
+          { id: activeSessionID, grep: '[', maxLines: 50 },
+          ctx,
+        ),
+      )
+
+      expect(result.warnings).toContainEqual(expect.stringContaining('Invalid grep regex'))
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
 })
 
 integration('zellij_pty_request_sudo', () => {

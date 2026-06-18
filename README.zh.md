@@ -80,9 +80,9 @@ Returns:
 **Spec:**
 
 - 拉最新 output、用 `grep` 過濾、順便看 pane 目前的狀態。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- `grep` 不是合法 regex 時,會回 warning 而不是整個 read 掛掉。 [`src/tools/read.test.ts`](src/tools/read.test.ts)
+- `grep` 不是合法 regex 時,會回 warning 而不是整個 read 掛掉。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - 想讀已退出的 pane 也可以;`pane_closed` 是被外部砍掉,`exit_marker` 是 process 自己結束 —— 用這個分辨。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- 想關掉「讀完就清」的預設行為,可以在 config 設 `pty.cleanupExitedPaneOnRead`,也可以在單次 call 用 tool arg 覆蓋。 [`src/tools/read.test.ts`](src/tools/read.test.ts)
+- 想關掉「讀完就清」的預設行為,可以在 config 設 `pty.cleanupExitedPaneOnRead`,也可以在單次 call 用 tool arg 覆蓋。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - 第一次 read 把已退出的 pane 關掉後,第二次 read 會回同一個 `tombstone.paneClosedAt` —— 用來判斷是不是同一個 lifecycle。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### `zellij_pty_write` 工具
@@ -183,7 +183,7 @@ Returns(`close-pane` 失敗、pane 還在):
 - pane 已經不在的話 kill 會 throw —— finally block 一定要 try/catch(e2e 的 `killQuietly` helper 就是這樣做)。 [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
 - 正常關 pane:Ctrl-C、等一下、`close-pane`。Ctrl-C 失敗只會變 warning,不會 throw。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - `close-pane` 失敗而且 pane 還在時,session 會保留下來 —— 等一下重試,或先看 warning。 [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
-- OpenCode 還沒正常 cleanup 就被 `Ctrl-D` 砍掉時,detached Node.js watchdog process 會接手把 plugin 建立的 pane 清掉。 [`src/zellij/pane-watchdog.test.ts`](src/zellij/pane-watchdog.test.ts) · [`tests/e2e/ci-pane.test.ts`](tests/e2e/ci-pane.test.ts)
+- OpenCode 還沒正常 cleanup 就被 `Ctrl-D` 砍掉時,detached Node.js watchdog process 會接手把 plugin 建立的 pane 清掉。 [`tests/e2e/ci-pane.test.ts`](tests/e2e/ci-pane.test.ts)
 
 ### `zellij_pty_request_sudo` 工具
 開啟 floating、human-input-only 的 review pane,顯示將要執行的 command,並等待使用者輸入 `YES`。
@@ -220,7 +220,6 @@ Returns:
 **Spec:**
 
 - [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts)
-- [`src/zellij/tab-title.test.ts`](src/zellij/tab-title.test.ts)
 
 ## 設定
 
@@ -233,6 +232,7 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`,預設 `true`。為 `true` 時,`zellij_pty_read` 對已退出的 pane 回傳 output 後會關閉該 pane。
+**Spec:** [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 **`tabTitle.enabled`** `boolean`,預設 `true`。設為 `false` 時停用動態 tab title。
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
