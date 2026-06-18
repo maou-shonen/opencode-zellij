@@ -6,88 +6,72 @@ This repository ships the `opencode-zellij` OpenCode plugin: visible Zellij pane
 
 ## Toolchain
 
-- Use `mise` for tool installation and as the public entrypoint for setup, validation, and release tasks.
-- Prefer documenting and running `mise run <task>` commands instead of raw package-manager scripts.
-- Keep Bun as an implementation detail behind `mise.toml` tasks unless a change specifically needs package-script internals.
+- Use `mise` for installation, setup, validation, and release.
+- Document and run `mise run <task>` instead of raw package-manager scripts.
+- Bun stays an implementation detail behind `mise.toml` tasks.
 
-## Setup
+## Tasks
 
-```bash
-mise install
-mise run install
-```
+`mise install` runs the `postinstall` hook (`bun install` + `lefthook install`). Available tasks:
 
-## Common tasks
+!`mise tasks --local`
 
-```bash
-mise run build
-mise run check
-mise run test-integration
-mise run test-e2e
-```
+## Validation
 
-## Validation expectations
+- `mise run check` is the default quality gate (typecheck, lint, unit tests, build, lint:readme).
+- `mise run test-e2e` is the only E2E entrypoint. It shells out to `act -j e2e`; the GitHub Actions job definition is the contract. **Never bypass it** with `bun test tests/e2e/...`, even when `act` is slow — ad-hoc runs can pass locally while diverging from CI. If the environment can't run `act` at all (no Docker, no disk for `ubuntu:act-24.04`), report the blocker.
+- The act runner image is pinned in `package.json` to `ghcr.io/catthehacker/ubuntu:act-24.04`.
+- `mise run test-integration` runs real Zellij coverage (plugin load, pane lifecycle, cleanup, tool wiring). Requires running inside Zellij or `ZELLIJ_SESSION_NAME` pointing at a live session.
 
-- `mise run check` is the default quality gate. It covers typecheck, lint, unit tests, and build.
-- `mise run test-e2e` is the single public E2E entrypoint. **Do not run `bun run test:e2e` directly** — the suite is meant to be replayed through the `act` task defined in `mise.toml`. Locally `mise run test-e2e` shells out to `act -j e2e`, which reuses the GitHub Actions `e2e` job definition (start a dedicated Zellij session, run `mise run test-integration`, then the pane-orchestration E2E coverage; the pane itself runs the native real-environment E2E suite including TUI coverage). Inside GitHub Actions or an `act` runner it short-circuits `act` and runs the pane-side suite directly.
-- **Never bypass `act` for E2E.** Do not invoke `bun test tests/e2e/...` (with or without `RUN_ZELLIJ_E2E=1`) as a stand-in for `mise run test-e2e`, even when `act` is too expensive or slow in the current environment. `act` is the only path that exercises the same job definition CI runs, and ad‑hoc invocations can pass locally while diverging from the CI contract. If the local environment cannot run `act` (e.g. no Docker daemon, not enough disk for the `ubuntu:act-24.04` image), report that as a blocker instead of substituting a different command.
-- The act runner image is pinned to `ghcr.io/catthehacker/ubuntu:act-24.04` (the medium-size variant that `nektos/act` recommends, smaller than the `act-latest` full-runner image and aligned with CI's `ubuntu-latest` = Ubuntu 24.04). Update `package.json` if the CI runner image changes.
-- `act` is part of the toolchain (declared in `mise.toml` `[tools]`), so `mise install` provides it. If you change the `e2e` job shape, keep `mise run test-e2e` as the only documented way to invoke it.
-- `mise run test-integration` is targeted real Zellij integration coverage for plugin loading, pane lifecycle, cleanup, and tool wiring changes.
-- Zellij-backed tests require running inside Zellij or setting `ZELLIJ_SESSION_NAME` to a live session.
+## CI and release
 
-## CI and release flow
-
-- `.github/workflows/ci.yml`
-  - `Check` runs `mise run check`
-  - `E2E` starts a dedicated Zellij session, then runs `mise run test-integration` and `mise run test-e2e`; in runner environments that single task still keeps pane orchestration covered while the pane runs the native E2E suite.
-- `.github/workflows/preview.yml` publishes preview packages for branch pushes and pull requests.
-- `.github/workflows/publish.yml` publishes `v*` tags, runs checks, publishes to npm, then syncs `package.json` back to `main`.
-- Prefer `act` over bespoke Docker runners for local CI reproduction.
+- `ci.yml` — `Check` runs `mise run check`; `E2E` runs integration + e2e inside a Zellij session.
+- `preview.yml` — preview packages on PR and branch pushes.
+- `publish.yml` — `v*` tags run checks, publish to npm, then sync `package.json` back to `main`.
+- Use `act` for local CI reproduction, not ad-hoc Docker.
 
 ## Repository guardrails
 
-- Keep the existing TypeScript ESM and no-semicolon style.
-- Prefer small, focused changes over broad refactors.
+- TypeScript ESM, no-semicolon style.
+- Small, focused changes.
 - Reuse helpers under `tests/e2e/support/` instead of duplicating Zellij setup logic.
-- Do not reintroduce the removed Docker-based E2E path.
+- Don't reintroduce the removed Docker-based E2E path.
 
-## Test-as-spec discipline
+## README as spec
 
-`README.md` doubles as a lightweight spec: every tool, feature, and configuration option listed there is bound to a `describe(...)` group in a test file via the `**Spec:**` section. The contract is therefore **tests, not prose**.
+`README.md` is the spec; tests are the source of truth. Every tool, feature, and config option is bound to a top-level `describe(...)` via the section's `**Spec:**` link. Bidirectional — a claim must point at a real test, and the linked test owns that behavior.
 
-### Rules
+A section that ships behavior ends with:
 
-- **One `describe` group per README section.** The group name must read like a section heading (e.g. `tab title activity lifecycle`, not `running idle switch`). Mechanical name lookup is performed by `mise run lint-readme`.
-- **`it` names read as clauses.** Each `it('...')` should read as a complete sentence about behavior (`it('keeps project and branch across status changes', ...)`, not `it('test1', ...)`).
-- **One feature, one group.** Do not scatter a single feature's cases across multiple top-level groups. If the group is getting large, split the feature — not the group.
-- **Helper-only test files are not specs.** Files under `tests/**/support/` (and any file whose only purpose is fixture/helper verification) are excluded from spec linking.
-- **Do not invent specs.** If a behavior has no test, do not list it under `**Spec:**` in the README. Either add a test, or remove the README claim. Honest gaps are fine; false specs are not.
+```markdown
+**Spec:** [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+```
 
-### Update discipline
+The linked file's top-level `describe` groups should each read like a section heading. Helper-only files under `tests/**/support/` are not specs.
 
-- Changing a spec'd behavior **must** update the linked `describe` group AND the README's `**Spec:**` section in the same commit.
-- Renaming a `describe` group is a breaking spec change: README links will go stale and `mise run lint-readme` will fail. Treat renames as deliberate and update README in the same commit.
-- Adding a new tool, feature, or config option without a test link is a review blocker.
+### Contributor checklist
 
-### Verification
+When you add or change a feature:
 
-- `mise run lint-readme` extracts every `tests/...` path from `README.md` and `README.zh.md`, verifies the file exists, and lists the `describe` groups inside so a reviewer can confirm the link target reads like the corresponding section.
-- This is part of the default `mise run check` quality gate.
+1. Add or update the `describe` group. `it` names read as clauses about behavior.
+2. Add or update the `**Spec:**` link in the README, in the same commit. A `describe` rename is breaking.
+3. Run `mise run check` — it runs `lint:readme` and fails on dead links.
+
+One feature, one group. If a behavior has no test, do not list it in the README. Honest gaps are fine; false specs are not.
 
 ## Tab title invariants
 
-When touching `src/zellij/tab-title.ts` and related tests, preserve these rules:
+When touching `src/zellij/tab-title.ts` and related tests:
 
 - Keep identity, activity, and rendering concerns separated.
 - Keep live `running`, `idle`, and `needs-input` status updates.
-- Branch display must come from plugin-bound worktree git reads, not from event payloads.
+- Branch display comes from plugin-bound worktree git reads, not from event payloads.
 - Unknown or out-of-scope session, status, or input events must not overwrite the visible title.
 - Track needs-input state by `(sessionID, requestID)`.
-- `TabTitleManager` should stay focused on rendering, debounce, retry, and restore behavior rather than owning session activity state.
+- `TabTitleManager` stays focused on rendering, debounce, retry, and restore — not session activity state.
 
 ## PTY and sudo invariants
 
-- Long-lived or interactive work should stay in visible Zellij panes.
-- `zellij_pty_request_sudo` must remain human-input-only. Agents must not gain write access to that pane.
-- Pane cleanup changes must preserve the watchdog-backed cleanup path for abnormal OpenCode exits.
+- Long-lived or interactive work stays in visible Zellij panes.
+- `zellij_pty_request_sudo` is human-input-only. Agents must not gain write access.
+- Pane cleanup preserves the watchdog-backed path for abnormal OpenCode exits.
