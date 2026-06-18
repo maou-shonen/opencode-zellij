@@ -30,7 +30,7 @@ async function withSessionOnlyTarget<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-integration('real Zellij tab-title run integration', () => {
+integration('tab title identity', () => {
   it('keeps status changes from altering project and branch', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const hooks = await loadPlugin({
@@ -64,6 +64,111 @@ integration('real Zellij tab-title run integration', () => {
     })
   }, integrationTimeoutMs)
 
+  it('ignores out-of-scope sessions and input events', async () => {
+    await withTempGitProject(async (projectRoot: string) => {
+      const hooks = await loadPlugin({
+        directory: projectRoot,
+        worktree: projectRoot,
+        client: defaultClient(),
+      })
+
+      try {
+        const initialTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
+        expect(initialTitle).toBeDefined()
+
+        await withTempGitProject(async (otherRoot: string) => {
+          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'other-session', directory: otherRoot } } })
+          await sendEvent(hooks, { type: 'session.status', properties: { sessionID: 'other-session', status: { type: 'busy' } } })
+          await sendEvent(hooks, { type: 'question.asked', properties: { id: 'q-other', sessionID: 'other-session' } })
+        })
+
+        const unchangedTitle = await observeStableTabTitle({
+          expected: initialTitle!,
+          forbidden: (title: string | undefined) => Boolean(
+            title?.startsWith('⚡') ||
+            title?.startsWith('💬') ||
+            title?.includes('other-session') ||
+            title?.includes('q-other'),
+          ),
+        })
+        expect(unchangedTitle.ok).toBe(true)
+        expect(unchangedTitle.title).toBe(initialTitle)
+      }
+      finally {
+        await disposeQuietly(hooks)
+      }
+    })
+  }, integrationTimeoutMs)
+
+  it('ignores out-of-scope parent and child session events', async () => {
+    await withTempGitProject(async (projectRoot: string) => {
+      const hooks = await loadPlugin({
+        directory: projectRoot,
+        worktree: projectRoot,
+        client: defaultClient(),
+      })
+
+      try {
+        const idleTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
+        expect(idleTitle).toBeDefined()
+
+        await withTempGitProject(async (otherRoot: string) => {
+          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'other-parent-session', directory: otherRoot } } })
+          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'other-child-session', directory: otherRoot, parentID: 'other-parent-session' } } })
+          await sendEvent(hooks, { type: 'session.status', properties: { sessionID: 'other-child-session', status: { type: 'busy' } } })
+          await sendEvent(hooks, { type: 'question.asked', properties: { id: 'q-other-child', sessionID: 'other-child-session' } })
+        })
+
+        const stableTitle = await observeStableTabTitle({
+          expected: idleTitle!,
+          forbidden: (title: string | undefined) => Boolean(
+            title?.startsWith('⚡') ||
+            title?.startsWith('💬') ||
+            title?.includes('other-parent-session') ||
+            title?.includes('other-child-session'),
+          ),
+        })
+        expect(stableTitle.ok).toBe(true)
+        expect(stableTitle.title).toBe(idleTitle)
+      }
+      finally {
+        await disposeQuietly(hooks)
+      }
+    })
+  }, integrationTimeoutMs)
+
+  it('keeps the bound worktree authoritative when a sibling worktree changes', async () => {
+    await withTempGitProject(async (projectRoot: string) => {
+      const siblingWorktree = join(projectRoot, '..', 'worktree-b')
+      await runGit(['worktree', 'add', '-b', 'feature/e2e', siblingWorktree, 'main'], projectRoot)
+
+      const hooks = await loadPlugin({
+        directory: projectRoot,
+        worktree: projectRoot,
+        client: defaultClient(),
+      })
+
+      try {
+        const initialTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
+        expect(initialTitle).toBeDefined()
+
+        await sendEvent(hooks, { type: 'vcs.branch.updated', properties: { branch: 'feature/e2e' } })
+
+        const stableTitle = await observeStableTabTitle({
+          expected: (title: string | undefined) => Boolean(title?.includes('main')),
+          forbidden: (title: string | undefined) => Boolean(title?.includes('feature/e2e')),
+        })
+        expect(stableTitle.ok).toBe(true)
+        expect(stableTitle.title).toContain('main')
+      }
+      finally {
+        await disposeQuietly(hooks)
+      }
+    })
+  }, integrationTimeoutMs)
+})
+
+integration('tab title emoji config', () => {
   it('loads custom tab title emojis from real plugin config on the actor path', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const hooks = await loadPlugin({
@@ -107,7 +212,9 @@ integration('real Zellij tab-title run integration', () => {
       }
     }, { configContent: '{ "tabTitle": { "enabled": true, "emojiIdle": "I", "emojiRunning": "R", "emojiNeedsInput": "Q", "emojiBranch": "B" } }' })
   }, integrationTimeoutMs)
+})
 
+integration('tab title activity lifecycle', () => {
   it('switches from busy to idle for the same session', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const hooks = await loadPlugin({
@@ -358,109 +465,6 @@ integration('real Zellij tab-title run integration', () => {
 
         const resumedTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
         expect(resumedTitle).toBeDefined()
-      }
-      finally {
-        await disposeQuietly(hooks)
-      }
-    })
-  }, integrationTimeoutMs)
-
-  it('ignores out-of-scope sessions and input events', async () => {
-    await withTempGitProject(async (projectRoot: string) => {
-      const hooks = await loadPlugin({
-        directory: projectRoot,
-        worktree: projectRoot,
-        client: defaultClient(),
-      })
-
-      try {
-        const initialTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
-        expect(initialTitle).toBeDefined()
-
-        await withTempGitProject(async (otherRoot: string) => {
-          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'other-session', directory: otherRoot } } })
-          await sendEvent(hooks, { type: 'session.status', properties: { sessionID: 'other-session', status: { type: 'busy' } } })
-          await sendEvent(hooks, { type: 'question.asked', properties: { id: 'q-other', sessionID: 'other-session' } })
-        })
-
-        const unchangedTitle = await observeStableTabTitle({
-          expected: initialTitle!,
-          forbidden: (title: string | undefined) => Boolean(
-            title?.startsWith('⚡') ||
-            title?.startsWith('💬') ||
-            title?.includes('other-session') ||
-            title?.includes('q-other'),
-          ),
-        })
-        expect(unchangedTitle.ok).toBe(true)
-        expect(unchangedTitle.title).toBe(initialTitle)
-      }
-      finally {
-        await disposeQuietly(hooks)
-      }
-    })
-  }, integrationTimeoutMs)
-
-  it('ignores out-of-scope parent and child session events', async () => {
-    await withTempGitProject(async (projectRoot: string) => {
-      const hooks = await loadPlugin({
-        directory: projectRoot,
-        worktree: projectRoot,
-        client: defaultClient(),
-      })
-
-      try {
-        const idleTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
-        expect(idleTitle).toBeDefined()
-
-        await withTempGitProject(async (otherRoot: string) => {
-          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'other-parent-session', directory: otherRoot } } })
-          await sendEvent(hooks, { type: 'session.created', properties: { info: { id: 'other-child-session', directory: otherRoot, parentID: 'other-parent-session' } } })
-          await sendEvent(hooks, { type: 'session.status', properties: { sessionID: 'other-child-session', status: { type: 'busy' } } })
-          await sendEvent(hooks, { type: 'question.asked', properties: { id: 'q-other-child', sessionID: 'other-child-session' } })
-        })
-
-        const stableTitle = await observeStableTabTitle({
-          expected: idleTitle!,
-          forbidden: (title: string | undefined) => Boolean(
-            title?.startsWith('⚡') ||
-            title?.startsWith('💬') ||
-            title?.includes('other-parent-session') ||
-            title?.includes('other-child-session'),
-          ),
-        })
-        expect(stableTitle.ok).toBe(true)
-        expect(stableTitle.title).toBe(idleTitle)
-      }
-      finally {
-        await disposeQuietly(hooks)
-      }
-    })
-  }, integrationTimeoutMs)
-
-  it('keeps the bound worktree authoritative when a sibling worktree changes', async () => {
-    await withTempGitProject(async (projectRoot: string) => {
-      const siblingWorktree = join(projectRoot, '..', 'worktree-b')
-      await runGit(['worktree', 'add', '-b', 'feature/e2e', siblingWorktree, 'main'], projectRoot)
-
-      const hooks = await loadPlugin({
-        directory: projectRoot,
-        worktree: projectRoot,
-        client: defaultClient(),
-      })
-
-      try {
-        const initialTitle = await waitForTabTitleValue((title: string | undefined) => Boolean(title?.startsWith('🟢') && title.includes('project') && title.includes('main')))
-        expect(initialTitle).toBeDefined()
-
-        await sendEvent(hooks, { type: 'vcs.branch.updated', properties: { branch: 'feature/e2e' } })
-
-        const stableTitle = await observeStableTabTitle({
-          expected: (title: string | undefined) => Boolean(title?.includes('main')),
-          forbidden: (title: string | undefined) => Boolean(title?.includes('feature/e2e')),
-        })
-        expect(stableTitle.ok).toBe(true)
-        expect(stableTitle.title).toContain('main')
       }
       finally {
         await disposeQuietly(hooks)

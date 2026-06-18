@@ -13,7 +13,7 @@ const hasPaneContext = Boolean(
 )
 
 if (hasPaneContext) {
-  describe('real Zellij pane TUI integration', () => {
+  describe('pane visibility in current tab', () => {
     it('spawns a visible pane in the current tab and cleans it up', async () => {
       const tabId = await currentPaneTabId()
       expect(tabId).toBeDefined()

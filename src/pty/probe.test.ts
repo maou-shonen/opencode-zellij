@@ -2,6 +2,14 @@ import { describe, expect, it } from 'bun:test'
 import { runProbe } from './probe.js'
 
 describe('runProbe', () => {
+  it('defaults to a short sleep probe when no probe is provided', async () => {
+    const result = await runProbe(undefined, () => false)
+
+    expect(result.ok).toBe(true)
+    expect(result.type).toBe('sleep')
+    expect(result.message).toMatch(/Slept for 1s/)
+  })
+
   it('uses a short sleep probe', async () => {
     const result = await runProbe({ type: 'sleep', seconds: 0.001 }, () => false)
 

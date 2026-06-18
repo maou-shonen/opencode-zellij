@@ -25,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "lint:readme": "bun run scripts/check-readme-spec.ts",
     "test": "bun test src",
     "test:integration": "bun run build && RUN_ZELLIJ_INTEGRATION=1 bun test tests/integration",
     "test:e2e": "bun run build && RUN_ZELLIJ_E2E=1 bun test --max-concurrency=1 tests/e2e/*.run.test.ts tests/e2e/*.tui.test.ts",

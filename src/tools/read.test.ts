@@ -97,6 +97,24 @@ describe('zellij_pty_read', () => {
       delete (zellijCli as any).paneExistsCalls
     }
   })
+
+  it('honors defaultCleanupExitedPaneOnRead=false when the tool arg is omitted', async () => {
+    const { session, deps } = createCompletedReadFixture('zpty_default_off', 'terminal_6')
+
+    const result = await executeZellijPtyRead({ id: session.id }, { ...deps, defaultCleanupExitedPaneOnRead: false })
+
+    expect(result.cleanup).toEqual({ requested: false, performed: false, alreadyClosed: false })
+    expect(session.tombstone?.paneClosedAt).toBeNull()
+  })
+
+  it('falls back to defaultCleanupExitedPaneOnRead=true when the tool arg and config are both absent', async () => {
+    const { session, deps } = createCompletedReadFixture('zpty_default_on', 'terminal_7')
+
+    const result = await executeZellijPtyRead({ id: session.id }, deps)
+
+    expect(result.cleanup.requested).toBe(true)
+    expect(result.cleanup.performed).toBe(true)
+  })
 })
 
 function createCompletedReadFixture(

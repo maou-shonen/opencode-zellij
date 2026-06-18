@@ -51,7 +51,7 @@ function listedSession(list: { sessions: Array<Record<string, unknown>> }, sessi
   return list.sessions.find(session => session.id === sessionID)
 }
 
-integration('real Zellij pane run integration', () => {
+integration('pty tool surface', () => {
   it('loads the built plugin tool surface', async () => {
     const hooks = await loadPlugin()
     try {
@@ -68,7 +68,9 @@ integration('real Zellij pane run integration', () => {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
+})
 
+integration('zellij_pty_spawn', () => {
   it('spawns a pane, probes output, reads with grep, and kills it', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -104,6 +106,109 @@ integration('real Zellij pane run integration', () => {
     }
   }, integrationTimeoutMs)
 
+  it('surfaces already-completed panes in later spawn and list responses', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    const sessionIDs: string[] = []
+
+    try {
+      const first = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'bash',
+            args: ['-lc', 'echo completed-pane-hint-ready; exit 0'],
+            probe: { type: 'output', grep: 'completed-pane-hint-ready', timeoutSeconds: 5 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+      const firstID = typeof first.session?.id === 'string' ? first.session.id : undefined
+      if (!firstID)
+        throw new Error('Expected first spawn session id')
+      sessionIDs.push(firstID)
+
+      await waitFor(
+        async () => listedSession(await listPtySessions(hooks, ctx), firstID)?.status,
+        status => status === 'exited',
+      )
+
+      const second = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'cat',
+            probe: { type: 'sleep', seconds: 0.2 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+      const secondID = typeof second.session?.id === 'string' ? second.session.id : undefined
+      if (!secondID)
+        throw new Error('Expected second spawn session id')
+      sessionIDs.push(secondID)
+
+      expect(second.completedPaneIds).toContain(firstID)
+      expect(second.completedPanes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: firstID,
+            status: 'exited',
+            reason: 'exit_marker',
+          }),
+        ]),
+      )
+      expect(second.completedPaneIds).not.toContain(secondID)
+
+      const listed = await listPtySessions(hooks, ctx)
+      expect(listed.completedPaneIds).toContain(firstID)
+      expect(listed.completedPaneIds).not.toContain(secondID)
+    }
+    finally {
+      for (const id of sessionIDs)
+        await killQuietly(hooks, id, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
+
+  it('waits for an HTTP probe served by a real spawned pane', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+
+    try {
+      const port = await reserveLocalPort()
+      const spawned = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'node',
+            args: ['-e', `require("node:http").createServer((_req, res) => { res.writeHead(204); res.end() }).listen(${port}, "127.0.0.1")`],
+            probe: { type: 'http', url: `http://127.0.0.1:${port}`, expectStatus: 204, timeoutSeconds: 5 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+
+      sessionID = typeof spawned.session?.id === 'string' ? spawned.session.id : undefined
+      expect(sessionID).toBeDefined()
+      if (!sessionID)
+        throw new Error('Expected spawned pane session id')
+
+      expect(spawned.probe.ok).toBe(true)
+      expect(spawned.probe.type).toBe('http')
+      expect(spawned.probe.message).toContain(`http://127.0.0.1:${port}`)
+      expect(spawned.probe.message).toContain('204')
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
+})
+
+integration('zellij_pty_write', () => {
   it('writes to an interactive pane and observes output', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -125,7 +230,9 @@ integration('real Zellij pane run integration', () => {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
+})
 
+integration('zellij_pty_read', () => {
   it('keeps externally closed panes terminal without reviving them on read', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -282,108 +389,9 @@ integration('real Zellij pane run integration', () => {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
+})
 
-  it('surfaces already-completed panes in later spawn and list responses', async () => {
-    const hooks = await loadPlugin()
-    const ctx = context()
-    const sessionIDs: string[] = []
-
-    try {
-      const first = JSON.parse(
-        await getTool(hooks, 'zellij_pty_spawn').execute(
-          {
-            command: 'bash',
-            args: ['-lc', 'echo completed-pane-hint-ready; exit 0'],
-            probe: { type: 'output', grep: 'completed-pane-hint-ready', timeoutSeconds: 5 },
-            maxLines: 50,
-          },
-          ctx,
-        ),
-      )
-      const firstID = typeof first.session?.id === 'string' ? first.session.id : undefined
-      if (!firstID)
-        throw new Error('Expected first spawn session id')
-      sessionIDs.push(firstID)
-
-      await waitFor(
-        async () => listedSession(await listPtySessions(hooks, ctx), firstID)?.status,
-        status => status === 'exited',
-      )
-
-      const second = JSON.parse(
-        await getTool(hooks, 'zellij_pty_spawn').execute(
-          {
-            command: 'cat',
-            probe: { type: 'sleep', seconds: 0.2 },
-            maxLines: 50,
-          },
-          ctx,
-        ),
-      )
-      const secondID = typeof second.session?.id === 'string' ? second.session.id : undefined
-      if (!secondID)
-        throw new Error('Expected second spawn session id')
-      sessionIDs.push(secondID)
-
-      expect(second.completedPaneIds).toContain(firstID)
-      expect(second.completedPanes).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: firstID,
-            status: 'exited',
-            reason: 'exit_marker',
-          }),
-        ]),
-      )
-      expect(second.completedPaneIds).not.toContain(secondID)
-
-      const listed = await listPtySessions(hooks, ctx)
-      expect(listed.completedPaneIds).toContain(firstID)
-      expect(listed.completedPaneIds).not.toContain(secondID)
-    }
-    finally {
-      for (const id of sessionIDs)
-        await killQuietly(hooks, id, ctx)
-      await disposeQuietly(hooks)
-    }
-  }, integrationTimeoutMs)
-
-  it('waits for an HTTP probe served by a real spawned pane', async () => {
-    const hooks = await loadPlugin()
-    const ctx = context()
-    let sessionID: string | undefined
-
-    try {
-      const port = await reserveLocalPort()
-      const spawned = JSON.parse(
-        await getTool(hooks, 'zellij_pty_spawn').execute(
-          {
-            command: 'node',
-            args: ['-e', `require("node:http").createServer((_req, res) => { res.writeHead(204); res.end() }).listen(${port}, "127.0.0.1")`],
-            probe: { type: 'http', url: `http://127.0.0.1:${port}`, expectStatus: 204, timeoutSeconds: 5 },
-            maxLines: 50,
-          },
-          ctx,
-        ),
-      )
-
-      sessionID = typeof spawned.session?.id === 'string' ? spawned.session.id : undefined
-      expect(sessionID).toBeDefined()
-      if (!sessionID)
-        throw new Error('Expected spawned pane session id')
-
-      expect(spawned.probe.ok).toBe(true)
-      expect(spawned.probe.type).toBe('http')
-      expect(spawned.probe.message).toContain(`http://127.0.0.1:${port}`)
-      expect(spawned.probe.message).toContain('204')
-    }
-    finally {
-      if (sessionID)
-        await killQuietly(hooks, sessionID, ctx)
-      await disposeQuietly(hooks)
-    }
-  }, integrationTimeoutMs)
-
+integration('zellij_pty_request_sudo', () => {
   it('creates zellij_pty_request_sudo as human-only and rejects agent writes', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -416,7 +424,9 @@ integration('real Zellij pane run integration', () => {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
+})
 
+integration('pane completion event', () => {
   it('calls client.session.promptAsync when a pane exits so the agent wakes immediately', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const prompts: Array<Record<string, unknown>> = []
@@ -562,7 +572,7 @@ integration('real Zellij pane run integration', () => {
     })
   }, integrationTimeoutMs)
 
-  it('does not call client.session.prompt when no pane exits', async () => {
+  it('does not call client.session.promptAsync when no pane exits', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const prompts: Array<Record<string, unknown>> = []
       const hooks = await loadPlugin({

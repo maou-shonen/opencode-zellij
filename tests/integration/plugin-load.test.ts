@@ -27,7 +27,7 @@ const ptyToolNames = [
 ]
 const ptyToolNamesWithoutSudo = ptyToolNames.filter(name => name !== 'zellij_pty_request_sudo')
 
-describe('built plugin integration load', () => {
+describe('loaded plugin surface', () => {
   let tempRoot = ''
   let originalXdgConfigHome: string | undefined
 

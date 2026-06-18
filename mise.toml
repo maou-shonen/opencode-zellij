@@ -20,13 +20,18 @@ description = "Build the plugin"
 run = "bun run build"
 
 [tasks.check]
-description = "Run typecheck, lint, tests, and build"
+description = "Run typecheck, lint, tests, build, and README spec check"
 run = [
   "bun run typecheck",
   "bun run lint",
   "bun run test",
   "bun run build",
+  "bun run lint:readme",
 ]
+
+[tasks.lint-readme]
+description = "Verify README spec links resolve to existing test files"
+run = "bun run lint:readme"
 
 [tasks.test-integration]
 description = "Run opt-in real Zellij integration tests"

@@ -52,6 +52,29 @@ mise run test-e2e
 - Reuse helpers under `tests/e2e/support/` instead of duplicating Zellij setup logic.
 - Do not reintroduce the removed Docker-based E2E path.
 
+## Test-as-spec discipline
+
+`README.md` doubles as a lightweight spec: every tool, feature, and configuration option listed there is bound to a `describe(...)` group in a test file via the `**Spec:**` section. The contract is therefore **tests, not prose**.
+
+### Rules
+
+- **One `describe` group per README section.** The group name must read like a section heading (e.g. `tab title activity lifecycle`, not `running idle switch`). Mechanical name lookup is performed by `mise run lint-readme`.
+- **`it` names read as clauses.** Each `it('...')` should read as a complete sentence about behavior (`it('keeps project and branch across status changes', ...)`, not `it('test1', ...)`).
+- **One feature, one group.** Do not scatter a single feature's cases across multiple top-level groups. If the group is getting large, split the feature — not the group.
+- **Helper-only test files are not specs.** Files under `tests/**/support/` (and any file whose only purpose is fixture/helper verification) are excluded from spec linking.
+- **Do not invent specs.** If a behavior has no test, do not list it under `**Spec:**` in the README. Either add a test, or remove the README claim. Honest gaps are fine; false specs are not.
+
+### Update discipline
+
+- Changing a spec'd behavior **must** update the linked `describe` group AND the README's `**Spec:**` section in the same commit.
+- Renaming a `describe` group is a breaking spec change: README links will go stale and `mise run lint-readme` will fail. Treat renames as deliberate and update README in the same commit.
+- Adding a new tool, feature, or config option without a test link is a review blocker.
+
+### Verification
+
+- `mise run lint-readme` extracts every `tests/...` path from `README.md` and `README.zh.md`, verifies the file exists, and lists the `describe` groups inside so a reviewer can confirm the link target reads like the corresponding section.
+- This is part of the default `mise run check` quality gate.
+
 ## Tab title invariants
 
 When touching `src/zellij/tab-title.ts` and related tests, preserve these rules:
