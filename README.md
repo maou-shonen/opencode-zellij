@@ -50,9 +50,9 @@ Returns:
 **Spec:**
 
 - Start a long-running command and get a handle (`session.id`) to talk to it later. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- Give short-lived commands a moment to produce output before returning. [`src/pty/probe.test.ts`](src/pty/probe.test.ts)
+- Give short-lived commands a moment to produce output before returning. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - Wait for an explicit ready signal (output match or HTTP) when the command needs one. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- Catch a bad `grep` regex before a pane is created. [`src/tools/spawn.test.ts`](src/tools/spawn.test.ts)
+- Catch a bad `grep` regex before a pane is created. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - Find out which earlier panes are still hanging around before spawning more. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - When the pane exits, wake up the owning OpenCode session exactly once (de-duplicated across multiple terminal signals); falls back to `client.session.prompt` when `promptAsync` is unavailable; never wakes when no pane exits. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
@@ -180,7 +180,7 @@ Returns (close-pane failed, pane still present):
 
 **Spec:**
 
-- If the pane is already gone, the kill throws — wrap in try/catch for finally blocks (the e2e `killQuietly` helper does this). [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
+- If the pane is already gone, the kill throws — wrap in try/catch for finally blocks (the e2e `killQuietly` helper does this). [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - Shut a pane down cleanly: Ctrl-C, brief pause, close-pane. Ctrl-C errors are warnings, not throws. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - If close-pane fails and the pane is still there, the session stays — retry later or read the warning. [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
 - If OpenCode dies before normal cleanup (Ctrl-D), a detached Node.js watchdog closes plugin-created panes so they don't leak. [`tests/e2e/ci-pane.test.ts`](tests/e2e/ci-pane.test.ts)

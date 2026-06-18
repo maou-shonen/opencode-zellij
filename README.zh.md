@@ -50,9 +50,9 @@ Returns:
 **Spec:**
 
 - 開一個 Zellij pane 跑持久或短命 command,並取得 `session.id` 供後續操作。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- 沒指定 ready 訊號時,給短命 command 一點時間輸出再回傳。 [`src/pty/probe.test.ts`](src/pty/probe.test.ts)
+- 沒指定 ready 訊號時,給短命 command 一點時間輸出再回傳。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - 需要真正等到 ready 訊號時,用 output 匹配或 HTTP probe 等它。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- 壞的 `grep` regex 在 pane 建立前就擋下來,不要浪費 pane slot。 [`src/tools/spawn.test.ts`](src/tools/spawn.test.ts)
+- 壞的 `grep` regex 在 pane 建立前就擋下來,不要浪費 pane slot。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - 想 spawn 之前先看看之前還有哪些 pane 還沒清。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - pane 結束時,喚醒擁有該 pane 的 OpenCode session 一次(多個 terminal signal 也只算一次);找不到 `promptAsync` 時 fallback 到 `client.session.prompt`;沒 pane 退出時不會亂叫。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
@@ -180,8 +180,8 @@ Returns(`close-pane` 失敗、pane 還在):
 
 **Spec:**
 
-- pane 已經不在的話 kill 會 throw —— finally block 一定要 try/catch(e2e 的 `killQuietly` helper 就是這樣做)。 [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
-- 正常關 pane:Ctrl-C、等一下、`close-pane`。Ctrl-C 失敗只會變 warning,不會 throw。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- pane 已經不在的話 kill 會 throw —— finally block 一定要 try/catch(e2e 的 `killQuietly` helper 就是這樣做)。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- 把 pane 乾淨關掉:先 Ctrl-C、暫停一下、再 `close-pane`。Ctrl-C 失敗只回 warning,不 throw。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - `close-pane` 失敗而且 pane 還在時,session 會保留下來 —— 等一下重試,或先看 warning。 [`src/tools/kill.test.ts`](src/tools/kill.test.ts)
 - OpenCode 還沒正常 cleanup 就被 `Ctrl-D` 砍掉時,detached Node.js watchdog process 會接手把 plugin 建立的 pane 清掉。 [`tests/e2e/ci-pane.test.ts`](tests/e2e/ci-pane.test.ts)
 

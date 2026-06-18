@@ -206,6 +206,59 @@ integration('zellij_pty_spawn', () => {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
+
+  it('returns output for short-lived commands when no probe is given', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+
+    try {
+      const spawned = JSON.parse(
+        await getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'bash',
+            args: ['-lc', 'echo no-probe-ready'],
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      )
+
+      sessionID = typeof spawned.session?.id === 'string' ? spawned.session.id : undefined
+      expect(sessionID).toBeDefined()
+      if (!sessionID)
+        throw new Error('Expected spawned pane session id')
+
+      expect(spawned.output.text).toContain('no-probe-ready')
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
+
+  it('rejects an invalid probe grep before creating a pane', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+
+    try {
+      await expect(
+        getTool(hooks, 'zellij_pty_spawn').execute(
+          {
+            command: 'bash',
+            args: ['-lc', 'echo should-not-run'],
+            probe: { type: 'output', grep: '[', timeoutSeconds: 5 },
+            maxLines: 50,
+          },
+          ctx,
+        ),
+      ).rejects.toThrow(/Invalid probe\.grep regex/)
+    }
+    finally {
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
 })
 
 integration('zellij_pty_write', () => {
@@ -227,6 +280,25 @@ integration('zellij_pty_write', () => {
     finally {
       if (sessionID)
         await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, integrationTimeoutMs)
+})
+
+integration('zellij_pty_kill', () => {
+  it('throws when the session is already gone', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+
+    try {
+      await expect(
+        getTool(hooks, 'zellij_pty_kill').execute(
+          { id: 'zpty_does_not_exist' },
+          ctx,
+        ),
+      ).rejects.toThrow(/Unknown zellij PTY session|zpty_does_not_exist/)
+    }
+    finally {
       await disposeQuietly(hooks)
     }
   }, integrationTimeoutMs)
