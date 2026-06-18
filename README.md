@@ -244,5 +244,21 @@ Sidecar config files load from `~/.config/opencode/opencode-zellij.config.jsonc`
 **`tabTitle.debounceMs`** `number`, default `300`. Debounce window (ms) for tab title updates.
 **Spec:** [`src/zellij/tab-title.test.ts`](src/zellij/tab-title.test.ts)
 
+### Example
+
+```jsonc
+// .opencode/opencode-zellij.config.jsonc
+{
+  "$schema": "https://unpkg.com/opencode-zellij/opencode-zellij.schema.json",
+  "pty": {
+    "sudoPane": "deny"
+  },
+  "tabTitle": {
+    "emojiRunning": "🔥",
+    "emojiNeedsInput": "❓"
+  }
+}
+```
+
 The committed `opencode-zellij.schema.json` is generated from `src/config.ts` and used by editors with JSON Schema support.
 **Spec:** [`tests/integration/config-schema.test.ts`](tests/integration/config-schema.test.ts)

@@ -244,5 +244,21 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 **`tabTitle.debounceMs`** `number`,預設 `300`。tab title 更新的 debounce 時間(毫秒)。
 **Spec:** [`src/zellij/tab-title.test.ts`](src/zellij/tab-title.test.ts)
 
+### 範例
+
+```jsonc
+// .opencode/opencode-zellij.config.jsonc
+{
+  "$schema": "https://unpkg.com/opencode-zellij/opencode-zellij.schema.json",
+  "pty": {
+    "sudoPane": "deny"
+  },
+  "tabTitle": {
+    "emojiRunning": "🔥",
+    "emojiNeedsInput": "❓"
+  }
+}
+```
+
 `opencode-zellij.schema.json` 由 `src/config.ts` 產生,支援 JSON Schema 的編輯器可拿來做自動完成與驗證。
 **Spec:** [`tests/integration/config-schema.test.ts`](tests/integration/config-schema.test.ts)
