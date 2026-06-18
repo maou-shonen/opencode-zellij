@@ -8,7 +8,7 @@
 
 ## README as spec
 
-README.md is the spec; tests are the source of truth. Every tool, feature, and config option is bound to a top-level `describe(...)` via the section's `**Spec:**` link. `mise run check` runs `lint:readme` and fails on dead links.
+README.md is the spec; tests are the source of truth. Every tool, feature, and config option is bound to a top-level `describe(...)` via the section's `**Spec:**` link.
 
 When adding or modifying a feature:
 
