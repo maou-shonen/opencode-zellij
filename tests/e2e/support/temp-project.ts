@@ -22,6 +22,20 @@ export async function writeProjectConfig(projectRoot: string, configContent: str
   await writeFile(join(configDir, 'opencode-zellij.config.jsonc'), configContent)
 }
 
+export async function withTempProject<T>(run: (projectRoot: string) => Promise<T>, options: TempProjectOptions = {}): Promise<T> {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'opencode-zellij-e2e-'))
+  const projectRoot = join(tempRoot, 'project')
+  await mkdir(projectRoot, { recursive: true })
+
+  try {
+    await writeProjectConfig(projectRoot, options.configContent)
+    return await run(projectRoot)
+  }
+  finally {
+    await rm(tempRoot, { force: true, recursive: true })
+  }
+}
+
 export async function withTempGitProject<T>(run: (projectRoot: string) => Promise<T>, options: TempProjectOptions = {}): Promise<T> {
   const tempRoot = await mkdtemp(join(tmpdir(), 'opencode-zellij-e2e-'))
   const projectRoot = join(tempRoot, 'project')

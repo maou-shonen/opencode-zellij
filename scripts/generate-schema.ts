@@ -36,7 +36,6 @@ export function generateJsonSchema(): JsonObject {
   setDefault(schema, ['tabTitle', 'emojiIdle'], defaultConfig.tabTitle.emojiIdle)
   setDefault(schema, ['tabTitle', 'emojiRunning'], defaultConfig.tabTitle.emojiRunning)
   setDefault(schema, ['tabTitle', 'emojiNeedsInput'], defaultConfig.tabTitle.emojiNeedsInput)
-  setDefault(schema, ['tabTitle', 'emojiBranch'], defaultConfig.tabTitle.emojiBranch)
   setDefault(schema, ['tabTitle', 'debounceMs'], defaultConfig.tabTitle.debounceMs)
   setDefault(schema, ['pty', 'enabled'], defaultConfig.pty.enabled)
   setDefault(schema, ['pty', 'cleanupExitedPaneOnRead'], defaultConfig.pty.cleanupExitedPaneOnRead)

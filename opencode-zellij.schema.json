@@ -29,11 +29,6 @@
           "type": "string",
           "default": "💬"
         },
-        "emojiBranch": {
-          "description": "Prefix used before the current git branch name.",
-          "type": "string",
-          "default": "🌱"
-        },
         "debounceMs": {
           "description": "Debounce time for tab title updates in milliseconds.",
           "type": "number",

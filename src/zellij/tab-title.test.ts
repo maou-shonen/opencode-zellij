@@ -5,7 +5,6 @@ import {
   sanitizeTitle,
   TabTitleActivityModel,
   TabTitleActor,
-  TabTitleIdentityModel,
   TabTitleManager,
   type TabTitleCli,
 } from './tab-title.js'
@@ -68,7 +67,6 @@ describe('sanitizeTitle', () => {
 type TabTitleTestHarnessOptions = {
   cli?: TabTitleCli
   currentTabTitle?: string | undefined
-  readBranch?: (worktree: string) => Promise<string>
   actorEmojis?: Partial<typeof defaultTabTitleEmojis>
   managerEmojis?: Partial<typeof defaultTabTitleEmojis>
   debounceMs?: number
@@ -118,14 +116,8 @@ function questionAsked(sessionID: string, id: string) {
   }
 }
 
-function branchUpdated() {
-  return {
-    type: 'vcs.branch.updated',
-  }
-}
-
 async function applyEvent(actor: TabTitleActor, manager: TabTitleManager, event: Parameters<TabTitleActor['handleEvent']>[0]) {
-  await actor.handleEvent(event)
+  actor.handleEvent(event)
   manager.scheduleUpdate()
 }
 
@@ -140,16 +132,10 @@ async function createHarness(options: TabTitleTestHarnessOptions = {}) {
     },
   }
 
-  const identity = new TabTitleIdentityModel({
-    projectName: 'my-project',
-    worktree: '/repo',
-    readBranch: options.readBranch ?? (async () => ''),
-  })
   const activity = new TabTitleActivityModel({
     worktreeDirectory: '/repo',
   })
   const actor = new TabTitleActor({
-    identity,
     activity,
     ...(options.actorEmojis ? { emojis: options.actorEmojis } : {}),
   })
@@ -162,12 +148,9 @@ async function createHarness(options: TabTitleTestHarnessOptions = {}) {
     ...(options.retryMaxMs !== undefined ? { retryMaxMs: options.retryMaxMs } : {}),
   })
 
-  await Promise.all([identity.ready, actor.ready])
-
   return {
     calls,
     cli,
-    identity,
     activity,
     actor,
     manager,
@@ -182,7 +165,7 @@ describe('TabTitleManager', () => {
       await manager.renderImmediate()
       await manager.renderImmediate()
 
-      expect(calls).toEqual(['🟢 my-project'])
+      expect(calls).toEqual(['🟢'])
       await manager.destroy()
     })
   })
@@ -230,7 +213,7 @@ describe('TabTitleManager', () => {
 
       await expect(manager.renderImmediate()).resolves.toBeUndefined()
       await new Promise(r => setTimeout(r, 30))
-      expect(calls).toEqual(['🟢 my-project', '🟢 my-project'])
+      expect(calls).toEqual(['🟢', '🟢'])
       await manager.destroy()
     })
   })
@@ -238,18 +221,16 @@ describe('TabTitleManager', () => {
   it('coalesces rapid actor state changes into one final title sync', async () => {
     await withZellijEnv('1', async () => {
       const { actor, manager, calls } = await createHarness({
-        readBranch: async () => 'main\n',
         debounceMs: 50,
       })
 
       await applyEvent(actor, manager, sessionCreated('s1'))
       await applyEvent(actor, manager, sessionStatus('s1', 'busy'))
-      await applyEvent(actor, manager, branchUpdated())
       await applyEvent(actor, manager, sessionIdle('s1'))
 
       expect(calls).toEqual([])
       await new Promise(r => setTimeout(r, 120))
-      expect(calls).toEqual(['🟢 my-project 🌱 main'])
+      expect(calls).toEqual(['🟢'])
       await manager.destroy()
     })
   })
@@ -273,22 +254,20 @@ describe('TabTitleManager', () => {
       }
       const { actor, manager } = await createHarness({
         cli: blockingCli,
-        readBranch: async () => 'main\n',
         debounceMs: 10,
       })
 
       const renderPromise = manager.renderImmediate()
       await new Promise(r => setTimeout(r, 10))
-      expect(calls).toEqual(['🟢 my-project 🌱 main'])
+      expect(calls).toEqual(['🟢'])
       await actor.handleEvent(sessionCreated('s1'))
       await actor.handleEvent(sessionStatus('s1', 'busy'))
-      await actor.handleEvent(branchUpdated())
       manager.scheduleUpdate()
 
       resolveFirstRename?.()
       await renderPromise
 
-      expect(calls).toEqual(['🟢 my-project 🌱 main', '⚡ my-project 🌱 main'])
+      expect(calls).toEqual(['🟢', '⚡'])
       await manager.destroy()
     })
   })
@@ -296,7 +275,6 @@ describe('TabTitleManager', () => {
   it('is a no-op when ZELLIJ is absent', async () => {
     await withZellijEnv(undefined, async () => {
       const { actor, manager, calls } = await createHarness({
-        readBranch: async () => 'main\n',
         debounceMs: 10,
       })
 

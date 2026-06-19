@@ -1,6 +1,6 @@
-import { expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { createServer } from 'node:net'
-import { integration, integrationTimeoutMs } from './support/env.js'
+
 import { context, disposeQuietly, getTool, killQuietly, loadPlugin } from './support/plugin.js'
 import { withTempGitProject } from './support/temp-project.js'
 import { runZellij } from './support/zellij.js'
@@ -51,7 +51,7 @@ function listedSession(list: { sessions: Array<Record<string, unknown>> }, sessi
   return list.sessions.find(session => session.id === sessionID)
 }
 
-integration('pty tool surface', () => {
+describe('pty tool surface', () => {
   it('loads the built plugin tool surface', async () => {
     const hooks = await loadPlugin()
     try {
@@ -67,10 +67,10 @@ integration('pty tool surface', () => {
     finally {
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 })
 
-integration('zellij_pty_spawn', () => {
+describe('zellij_pty_spawn', () => {
   it('spawns a pane, probes output, reads with grep, and kills it', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -104,7 +104,7 @@ integration('zellij_pty_spawn', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('surfaces already-completed panes in later spawn and list responses', async () => {
     const hooks = await loadPlugin()
@@ -169,7 +169,7 @@ integration('zellij_pty_spawn', () => {
         await killQuietly(hooks, id, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('waits for an HTTP probe served by a real spawned pane', async () => {
     const hooks = await loadPlugin()
@@ -205,7 +205,7 @@ integration('zellij_pty_spawn', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('returns output for short-lived commands when no probe is given', async () => {
     const hooks = await loadPlugin()
@@ -236,7 +236,7 @@ integration('zellij_pty_spawn', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('rejects an invalid probe grep before creating a pane', async () => {
     const hooks = await loadPlugin()
@@ -258,10 +258,10 @@ integration('zellij_pty_spawn', () => {
     finally {
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 })
 
-integration('zellij_pty_write', () => {
+describe('zellij_pty_write', () => {
   it('writes to an interactive pane and observes output', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -282,10 +282,10 @@ integration('zellij_pty_write', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 })
 
-integration('zellij_pty_kill', () => {
+describe('zellij_pty_kill', () => {
   it('throws when the session is already gone', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -301,10 +301,10 @@ integration('zellij_pty_kill', () => {
     finally {
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 })
 
-integration('zellij_pty_read', () => {
+describe('zellij_pty_read', () => {
   it('keeps externally closed panes terminal without reviving them on read', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -376,7 +376,7 @@ integration('zellij_pty_read', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('cleans naturally completed panes on read while preserving exited tombstones', async () => {
     const hooks = await loadPlugin()
@@ -460,7 +460,7 @@ integration('zellij_pty_read', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('returns a warning for invalid grep regex instead of crashing the read', async () => {
     const hooks = await loadPlugin()
@@ -500,10 +500,10 @@ integration('zellij_pty_read', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 })
 
-integration('zellij_pty_request_sudo', () => {
+describe('zellij_pty_request_sudo', () => {
   it('creates zellij_pty_request_sudo as human-only and rejects agent writes', async () => {
     const hooks = await loadPlugin()
     const ctx = context()
@@ -535,10 +535,10 @@ integration('zellij_pty_request_sudo', () => {
         await killQuietly(hooks, sessionID, ctx)
       await disposeQuietly(hooks)
     }
-  }, integrationTimeoutMs)
+  }, 15_000)
 })
 
-integration('pane completion event', () => {
+describe('pane completion event', () => {
   it('calls client.session.promptAsync when a pane exits so the agent wakes immediately', async () => {
     await withTempGitProject(async (projectRoot: string) => {
       const prompts: Array<Record<string, unknown>> = []
@@ -616,7 +616,7 @@ integration('pane completion event', () => {
         await disposeQuietly(hooks)
       }
     }, { configContent: '{ "tabTitle": { "enabled": true } }' })
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('falls back to client.session.prompt when promptAsync is unavailable', async () => {
     await withTempGitProject(async (projectRoot: string) => {
@@ -682,7 +682,7 @@ integration('pane completion event', () => {
         await disposeQuietly(hooks)
       }
     })
-  }, integrationTimeoutMs)
+  }, 15_000)
 
   it('does not call client.session.promptAsync when no pane exits', async () => {
     await withTempGitProject(async (projectRoot: string) => {
@@ -710,5 +710,5 @@ integration('pane completion event', () => {
         await disposeQuietly(hooks)
       }
     })
-  }, integrationTimeoutMs)
+  }, 15_000)
 })

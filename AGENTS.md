@@ -6,6 +6,10 @@
 
 `mise run check` is the fast in-process validation. `mise run test-e2e` is the high-fidelity E2E. Run both when adding or modifying features.
 
+### E2E
+
+E2E tests live under `tests/e2e/`. The only sanctioned entry point is `mise run test-e2e`. Bypassing it (e.g. `bun test tests/e2e/…`) gives false confidence because the right Zellij session, env vars, and act-based isolation are not set up.
+
 ## README as spec
 
 README.md is the spec; tests are the source of truth. Every tool, feature, and config option is bound to a top-level `describe(...)` via the section's `**Spec:**` link.

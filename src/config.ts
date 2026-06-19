@@ -13,7 +13,6 @@ export interface TabTitleConfig {
   emojiIdle: string
   emojiRunning: string
   emojiNeedsInput: string
-  emojiBranch: string
   debounceMs: number
 }
 
@@ -54,7 +53,6 @@ const tabTitleLayerSchema = z.object({
   emojiIdle: z.string().optional().describe('Prefix used when OpenCode is idle.'),
   emojiRunning: z.string().optional().describe('Prefix used while OpenCode is running work.'),
   emojiNeedsInput: z.string().optional().describe('Prefix used when OpenCode is waiting for human input.'),
-  emojiBranch: z.string().optional().describe('Prefix used before the current git branch name.'),
   debounceMs: z.number().finite().min(0).optional().describe('Debounce time for tab title updates in milliseconds.'),
 }).strict()
 
@@ -76,7 +74,6 @@ export const defaultConfig: ZellijPluginConfig = {
     emojiIdle: '🟢',
     emojiRunning: '⚡',
     emojiNeedsInput: '💬',
-    emojiBranch: '🌱',
     debounceMs: 300,
   },
   pty: {
@@ -88,8 +85,23 @@ export const defaultConfig: ZellijPluginConfig = {
 
 type ConfigLayer = Pick<z.infer<typeof sidecarConfigSchema>, 'tabTitle' | 'pty'>
 
+const DEPRECATED_TAB_TITLE_KEYS = ['emojiBranch'] as const
+
+function stripDeprecatedTabTitleFields(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return value
+  const result = { ...(value as Record<string, unknown>) }
+  for (const key of DEPRECATED_TAB_TITLE_KEYS)
+    delete result[key]
+  return result
+}
+
 function validConfigLayer(value: unknown): ConfigLayer | undefined {
-  const result = sidecarConfigSchema.safeParse(value)
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined
+  const cloned = { ...(value as Record<string, unknown>) }
+  cloned.tabTitle = stripDeprecatedTabTitleFields(cloned.tabTitle)
+  const result = sidecarConfigSchema.safeParse(cloned)
   if (!result.success)
     return undefined
 
@@ -106,7 +118,6 @@ function mergeConfig(user?: ConfigLayer | undefined, project?: ConfigLayer | und
       emojiIdle: project?.tabTitle?.emojiIdle ?? user?.tabTitle?.emojiIdle ?? defaultConfig.tabTitle.emojiIdle,
       emojiRunning: project?.tabTitle?.emojiRunning ?? user?.tabTitle?.emojiRunning ?? defaultConfig.tabTitle.emojiRunning,
       emojiNeedsInput: project?.tabTitle?.emojiNeedsInput ?? user?.tabTitle?.emojiNeedsInput ?? defaultConfig.tabTitle.emojiNeedsInput,
-      emojiBranch: project?.tabTitle?.emojiBranch ?? user?.tabTitle?.emojiBranch ?? defaultConfig.tabTitle.emojiBranch,
       debounceMs: project?.tabTitle?.debounceMs ?? user?.tabTitle?.debounceMs ?? defaultConfig.tabTitle.debounceMs,
     },
     pty: {

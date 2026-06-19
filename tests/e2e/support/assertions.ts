@@ -1,9 +1,5 @@
 import { currentTabTitle } from './zellij.js'
 
-export function titleBody(title: string): string {
-  return title.replace(/^\S+\s/, '')
-}
-
 export async function waitForTabTitle(
   predicate: (title: string | undefined) => boolean,
   timeoutMs = 5_000,

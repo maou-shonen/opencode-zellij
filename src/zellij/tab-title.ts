@@ -14,27 +14,21 @@ export interface TabTitleEmojis {
   idle: string
   running: string
   needsInput: string
-  branch: string
 }
 
 export const defaultTabTitleEmojis: TabTitleEmojis = {
   idle: '🟢',
   running: '⚡',
   needsInput: '💬',
-  branch: '🌱',
 }
 
 export interface TitleContext {
-  projectName: string
-  branchName: string | undefined
   status: TabTitleStatus
   emojis: TabTitleEmojis
 }
 
 export function formatTabTitle(context: TitleContext): string {
-  const branch = context.branchName ? ` ${context.emojis.branch} ${context.branchName}` : ''
-  const emoji = context.emojis[context.status === 'needs-input' ? 'needsInput' : context.status]
-  return `${emoji} ${context.projectName}${branch}`
+  return context.emojis[context.status === 'needs-input' ? 'needsInput' : context.status]
 }
 
 export function sanitizeTitle(title: string, maxLength = 90): string {
@@ -99,49 +93,6 @@ function deletedSessionID(properties: Record<string, unknown>): string | undefin
 interface SessionRecord {
   directory: string | undefined
   parentID: string | undefined
-}
-
-export class TabTitleIdentityModel {
-  ready: Promise<void>
-  projectName: string
-  branchName: string | undefined
-  private worktree: string
-  private readBranch: (worktree: string) => Promise<string>
-  private refreshGeneration = 0
-
-  constructor(options: {
-    projectName: string
-    worktree: string
-    readBranch: (worktree: string) => Promise<string>
-  }) {
-    this.projectName = options.projectName
-    this.worktree = options.worktree
-    this.readBranch = options.readBranch
-    this.ready = this.refreshBranch('initial')
-  }
-
-  async refreshBranch(_reason?: string): Promise<void> {
-    const generation = ++this.refreshGeneration
-    try {
-      const result = await this.readBranch(this.worktree)
-      if (generation !== this.refreshGeneration)
-        return
-      const trimmed = result.trim() || undefined
-      this.branchName = trimmed
-    }
-    catch (error) {
-      if (generation !== this.refreshGeneration)
-        return
-      debug('refreshBranch failed', errorMessage(error))
-      // keep previous branch
-    }
-  }
-
-  handleEvent(event: { type: string, properties?: unknown }): Promise<void> | void {
-    if (event.type === 'vcs.branch.updated') {
-      return this.refreshBranch('vcs.branch.updated')
-    }
-  }
 }
 
 export class TabTitleActivityModel {
@@ -311,26 +262,19 @@ export class TabTitleActivityModel {
 }
 
 export class TabTitleActor {
-  ready: Promise<void>
-  private identity: TabTitleIdentityModel
   private activity: TabTitleActivityModel
   private emojis: TabTitleEmojis
 
   constructor(options: {
-    identity: TabTitleIdentityModel
     activity: TabTitleActivityModel
     emojis?: Partial<TabTitleEmojis> | undefined
   }) {
-    this.identity = options.identity
     this.activity = options.activity
     this.emojis = { ...defaultTabTitleEmojis, ...options.emojis }
-    this.ready = this.identity.ready
   }
 
   get context() {
     return {
-      projectName: this.identity.projectName,
-      branchName: this.identity.branchName,
       status: this.activity.status,
     }
   }
@@ -342,12 +286,8 @@ export class TabTitleActor {
     })
   }
 
-  async handleEvent(event: { type: string, properties?: unknown }): Promise<void> {
+  handleEvent(event: { type: string, properties?: unknown }): void {
     this.activity.handleEvent(event)
-
-    const identityResult = this.identity.handleEvent(event)
-    if (identityResult instanceof Promise)
-      await identityResult
   }
 }
 

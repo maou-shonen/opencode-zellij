@@ -215,7 +215,7 @@ Returns:
 - Credentials typed by the user stay in their terminal scrollback, never reach the agent or the LLM. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### Dynamic tab title
-Update the Zellij tab title to show project, branch, and current OpenCode state. The title reads from the plugin-bound worktree's git (not from event payloads), so out-of-scope sessions and sibling worktrees can't pollute it.
+Update the Zellij tab title to show the current OpenCode state (idle / running / needs-input).
 
 **Spec:**
 
@@ -237,7 +237,7 @@ Sidecar config files load from `~/.config/opencode/opencode-zellij.config.jsonc`
 **`tabTitle.enabled`** `boolean`, default `true`. Disables dynamic tab title updates when `false`.
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
-**`tabTitle.emojiIdle` / `emojiRunning` / `emojiNeedsInput` / `emojiBranch`** Strings, defaults `🟢` / `⚡` / `💬` / `🌱`. Prefixes for the state and branch segments.
+**`tabTitle.emojiIdle` / `emojiRunning` / `emojiNeedsInput`** Strings, defaults `🟢` / `⚡` / `💬`. Prefixes for the state segment.
 **Spec:** [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts)
 
 **`tabTitle.debounceMs`** `number`, default `300`. Debounce window (ms) for tab title updates.

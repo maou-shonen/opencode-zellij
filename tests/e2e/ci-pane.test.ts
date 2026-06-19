@@ -14,13 +14,25 @@ import { runZellij, listPanes } from './support/zellij.js'
 // and exit code is 0.
 //
 // The pane payload is a short inline bash script (temp file) with positional
-// args so quoting stays clean.  CI_PANE_INNER_COMMAND can override the inner
-// command for negative-test failure injection, but the default stays on the
-// native E2E command so runner-side `mise run test-e2e` does not recurse.
+// args so quoting stays clean.  The inner command is fixed (no override) so
+// runner-side `mise run test-e2e` does not recurse.
 // ---------------------------------------------------------------------------
 
-const innerCommand = process.env.CI_PANE_INNER_COMMAND ?? 'bun run test:e2e'
-const paneTimeoutMs = Number(process.env.CI_PANE_TIMEOUT_MS ?? 480_000)
+const innerCommand = 'bun run scripts/generate-schema.ts && bunx --bun tsdown && bun test --max-concurrency=1 tests/e2e/*.run.test.ts tests/e2e/*.tui.test.ts'
+
+/**
+ * CI pane runner config.  No env-var overrides — the runner is fixed so
+ * `mise run test-e2e` has no knobs to chase.
+ */
+const config = {
+  /** Max ms to wait for the inner Zellij pane to finish its e2e run. */
+  paneTimeoutMs: 480_000,
+  /** Interval (ms) between polls for the inner pane's result file. */
+  pollIntervalMs: 1_000,
+  /** Retry budget when checking pane existence; guards against transient empty payloads. */
+  paneExistsRetries: 3,
+  paneExistsRetryIntervalMs: 200,
+}
 
 describe('CI pane orchestration', () => {
   it('runs full e2e inside a live Zellij pane and validates pane context', async () => {
@@ -85,7 +97,7 @@ describe('CI pane orchestration', () => {
       console.log(`Created CI pane: ${createdPaneId}`)
 
       // ── poll for result file ───────────────────────────────────────
-      const deadline = Date.now() + paneTimeoutMs
+      const deadline = Date.now() + config.paneTimeoutMs
       let resultFound = false
 
       while (Date.now() <= deadline) {
@@ -105,7 +117,7 @@ describe('CI pane orchestration', () => {
         // return an empty / incomplete payload right after a spawn or
         // while the session is settling; one empty poll shouldn't be
         // enough to declare the pane gone.
-        const { alive, rawListPanes } = await paneExistsWithRetry(createdPaneId, 3, 200)
+        const { alive, rawListPanes } = await paneExistsWithRetry(createdPaneId, config.paneExistsRetries, config.paneExistsRetryIntervalMs)
 
         if (!alive) {
           // Brief grace period in case result was written between checks
@@ -129,12 +141,12 @@ describe('CI pane orchestration', () => {
           )
         }
 
-        await new Promise(r => setTimeout(r, 1_000))
+        await new Promise(r => setTimeout(r, config.pollIntervalMs))
       }
 
       if (!resultFound) {
         throw new Error(
-          `Timed out after ${paneTimeoutMs}ms waiting for pane ${createdPaneId} to finish`,
+          `Timed out after ${config.paneTimeoutMs}ms waiting for pane ${createdPaneId} to finish`,
         )
       }
 
@@ -176,7 +188,7 @@ describe('CI pane orchestration', () => {
 
       await rm(tmpDir, { force: true, recursive: true })
     }
-  }, paneTimeoutMs + 10_000)
+  }, config.paneTimeoutMs + 10_000)
 })
 
 // ---------------------------------------------------------------------------

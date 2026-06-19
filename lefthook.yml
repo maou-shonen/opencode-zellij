@@ -1,7 +1,7 @@
 pre-commit:
   commands:
     typecheck:
-      run: bun run typecheck
+      run: bunx --bun tsc --noEmit
     lint-fix:
-      run: bun run lint:fix
+      run: bunx --bun eslint . --fix
       stage_fixed: true

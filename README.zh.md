@@ -215,7 +215,7 @@ Returns:
 - 使用者打的 credentials 只留在 Zellij scrollback,不會進到 agent 或 LLM。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### Dynamic tab title
-更新 Zellij tab title,顯示 project、branch 與 OpenCode 狀態。Title 從 plugin-bound worktree 的 git 讀取(不是從 event payload),所以 out-of-scope session 或 sibling worktree 的事件不會污染它。
+更新 Zellij tab title,顯示 OpenCode 目前的狀態(idle / running / needs-input)。
 
 **Spec:**
 
@@ -237,7 +237,7 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 **`tabTitle.enabled`** `boolean`,預設 `true`。設為 `false` 時停用動態 tab title。
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
 
-**`tabTitle.emojiIdle` / `emojiRunning` / `emojiNeedsInput` / `emojiBranch`** 字串,預設 `🟢` / `⚡` / `💬` / `🌱`。狀態與 branch 區段的前綴。
+**`tabTitle.emojiIdle` / `emojiRunning` / `emojiNeedsInput`** 字串,預設 `🟢` / `⚡` / `💬`。狀態區段的前綴。
 **Spec:** [`tests/e2e/zellij-tab-title.run.test.ts`](tests/e2e/zellij-tab-title.run.test.ts)
 
 **`tabTitle.debounceMs`** `number`,預設 `300`。tab title 更新的 debounce 時間(毫秒)。

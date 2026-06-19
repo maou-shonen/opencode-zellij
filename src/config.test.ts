@@ -173,4 +173,14 @@ describe('plugin config', () => {
     expect(result.config.tabTitle.emojiIdle).toBe('D')
   })
 
+  it('silently drops deprecated emojiBranch from tabTitle without rejecting other fields', async () => {
+    await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.config.jsonc', '{ "tabTitle": { "emojiBranch": "🌱", "emojiIdle": "X" } }')
+
+    const result = await loadConfig({ directory: join(tempRoot, 'project') })
+
+    expect(result.config.tabTitle.emojiIdle).toBe('X')
+    expect(result.sources.project).toBe(join(tempRoot, 'project', '.opencode', 'opencode-zellij.config.jsonc'))
+    expect(result.warnings).toEqual([])
+  })
+
 })

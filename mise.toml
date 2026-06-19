@@ -17,27 +17,30 @@ run = "bun install"
 
 [tasks.build]
 description = "Build the plugin"
-run = "bun run build"
+run = "bun run scripts/generate-schema.ts && bunx --bun tsdown"
 
 [tasks.check]
 description = "Run typecheck, lint, tests, and build"
 run = [
-  "bun run typecheck",
-  "bun run lint",
-  "bun run test",
-  "bun run build",
+  "bunx --bun tsc --noEmit",
+  "bunx --bun eslint .",
+  "bun test src",
+  "bun run scripts/generate-schema.ts && bunx --bun tsdown",
 ]
 
 [tasks.test-integration]
-description = "Run opt-in real Zellij integration tests"
-run = "bun run test:integration"
+description = "Run integration tests against the built plugin"
+run = """
+bun run scripts/generate-schema.ts && bunx --bun tsdown && \
+  bun test tests/integration
+"""
 
 [tasks.test-e2e]
 description = "Run the public E2E entrypoint"
 run = """
 if [ \"${GITHUB_ACTIONS:-}\" = \"true\" ]; then
-  bun run test:e2e:ci-pane
+  bun test tests/e2e/ci-pane.test.ts
 else
-  bun run test:e2e:act
+  act -j e2e -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-24.04
 fi
 """
