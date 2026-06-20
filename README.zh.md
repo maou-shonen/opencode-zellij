@@ -215,7 +215,7 @@ Returns:
 - 使用者打的 credentials 只留在 Zellij scrollback,不會進到 agent 或 LLM。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### Dynamic tab title
-更新 Zellij tab title,顯示 OpenCode 目前的狀態(idle / running / needs-input)。
+在當前 Zellij tab title 末尾追加狀態 emoji，顯示 OpenCode 目前的狀態（idle / running / needs-input）。狀態變化時只取代末尾的 emoji，保留你原本的 tab title。
 
 **Spec:**
 

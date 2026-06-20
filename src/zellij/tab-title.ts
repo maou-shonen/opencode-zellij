@@ -301,7 +301,7 @@ export interface TabTitleManagerOptions {
 }
 
 export class TabTitleManager {
-  private desiredTitle: string | undefined
+  private lastDesiredStatus: TabTitleStatus | undefined
   private lastSyncedTitle: string | undefined
   private syncGeneration = 0
   private debounceTimer: ReturnType<typeof setTimeout> | undefined
@@ -336,14 +336,47 @@ export class TabTitleManager {
     }))
   }
 
+  /**
+   * Compose a full tab title by appending or replacing the status emoji
+   * at the end of the current title.
+   */
+  private composeTitle(current: string | undefined, newEmoji: string, allEmojis: string[]): string {
+    if (!current)
+      return newEmoji
+    // Whole title is exactly a known status emoji (e.g. from a previous version)
+    if (allEmojis.includes(current))
+      return newEmoji
+    // Ends with " emoji" → replace the trailing emoji
+    for (const emoji of allEmojis) {
+      if (current.endsWith(` ${emoji}`))
+        return `${current.slice(0, current.length - emoji.length - 1)} ${newEmoji}`
+    }
+    // No known emoji at the end → append
+    return `${current} ${newEmoji}`
+  }
+
+  private get statusEmojis(): string[] {
+    return [this.emojis.idle, this.emojis.running, this.emojis.needsInput]
+  }
+
   getCurrentTitle(): string {
     return this.buildTitle()
+  }
+
+  private async readCurrentTitle(): Promise<string | undefined> {
+    try {
+      return await this.cli.currentTabTitle()
+    }
+    catch (error) {
+      debug('Failed to read current tab title', errorMessage(error))
+      return undefined
+    }
   }
 
   async renderImmediate(): Promise<void> {
     if (!this.enabled || this.destroyed)
       return
-    this.desiredTitle = this.buildTitle()
+    this.lastDesiredStatus = undefined
     this.clearDebounceTimer()
     await this.syncDesiredTitle()
   }
@@ -351,13 +384,10 @@ export class TabTitleManager {
   scheduleUpdate(): void {
     if (!this.enabled || this.destroyed)
       return
-    const title = this.buildTitle()
-    if (title === this.desiredTitle && title === this.lastSyncedTitle)
+    const status = this.actor.context.status
+    if (status === this.lastDesiredStatus && this.lastSyncedTitle !== undefined)
       return
-    this.desiredTitle = title
-
-    if (this.syncInFlight)
-      return
+    this.lastDesiredStatus = status
 
     this.clearRetryTimer()
     this.clearDebounceTimer()
@@ -385,13 +415,23 @@ export class TabTitleManager {
 
   private async runTitleSync(generation: number): Promise<void> {
     try {
-      while (generation === this.syncGeneration && this.desiredTitle && this.desiredTitle !== this.lastSyncedTitle) {
-        const title = this.desiredTitle
+      while (generation === this.syncGeneration) {
+        const currentTitle = await this.readCurrentTitle()
+        // Reading current title failed; skip this sync to avoid destructive overwrite
+        if (currentTitle === undefined)
+          break
+
+        const newEmoji = this.buildTitle()
+        const composed = sanitizeTitle(this.composeTitle(currentTitle, newEmoji, this.statusEmojis))
+
+        if (composed === this.lastSyncedTitle)
+          break
+
         try {
-          await this.cli.renameTab(title)
+          await this.cli.renameTab(composed)
           if (generation !== this.syncGeneration || this.destroyed)
             return
-          this.lastSyncedTitle = title
+          this.lastSyncedTitle = composed
           this.retryAttempt = 0
           this.clearRetryTimer()
         }
@@ -411,7 +451,7 @@ export class TabTitleManager {
   }
 
   private scheduleRetry(): void {
-    if (!this.enabled || this.destroyed || this.retryTimer || this.desiredTitle === this.lastSyncedTitle)
+    if (!this.enabled || this.destroyed || this.retryTimer)
       return
 
     const delay = Math.min(this.retryMaxMs, this.retryInitialMs * 2 ** this.retryAttempt)
@@ -455,7 +495,6 @@ export class TabTitleManager {
       return this.destroyPromise ?? Promise.resolve()
     this.destroyed = true
     this.syncGeneration += 1
-    this.desiredTitle = undefined
     this.clearDebounceTimer()
     this.clearRetryTimer()
     return Promise.resolve()

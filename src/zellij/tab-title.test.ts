@@ -123,12 +123,16 @@ async function applyEvent(actor: TabTitleActor, manager: TabTitleManager, event:
 
 async function createHarness(options: TabTitleTestHarnessOptions = {}) {
   const calls: string[] = []
+  const tabTitleCalls: (string | undefined)[] = []
+  const explicitCurrentTab = 'currentTabTitle' in options
   const cli: TabTitleCli = options.cli ?? {
     async renameTab(title: string) {
       calls.push(title)
     },
     async currentTabTitle() {
-      return options.currentTabTitle
+      const title = explicitCurrentTab ? options.currentTabTitle : 'my-tab'
+      tabTitleCalls.push(title)
+      return title
     },
   }
 
@@ -150,6 +154,7 @@ async function createHarness(options: TabTitleTestHarnessOptions = {}) {
 
   return {
     calls,
+    tabTitleCalls,
     cli,
     activity,
     actor,
@@ -165,7 +170,7 @@ describe('TabTitleManager', () => {
       await manager.renderImmediate()
       await manager.renderImmediate()
 
-      expect(calls).toEqual(['🟢'])
+      expect(calls).toEqual(['my-tab 🟢'])
       await manager.destroy()
     })
   })
@@ -177,7 +182,7 @@ describe('TabTitleManager', () => {
           throw new Error('zellij not found')
         },
         async currentTabTitle() {
-          return undefined
+          return 'my-tab'
         },
       }
       const { manager } = await createHarness({
@@ -203,7 +208,7 @@ describe('TabTitleManager', () => {
           }
         },
         async currentTabTitle() {
-          return undefined
+          return 'my-tab'
         },
       }
       const { manager } = await createHarness({
@@ -213,7 +218,7 @@ describe('TabTitleManager', () => {
 
       await expect(manager.renderImmediate()).resolves.toBeUndefined()
       await new Promise(r => setTimeout(r, 30))
-      expect(calls).toEqual(['🟢', '🟢'])
+      expect(calls).toEqual(['my-tab 🟢', 'my-tab 🟢'])
       await manager.destroy()
     })
   })
@@ -230,7 +235,7 @@ describe('TabTitleManager', () => {
 
       expect(calls).toEqual([])
       await new Promise(r => setTimeout(r, 120))
-      expect(calls).toEqual(['🟢'])
+      expect(calls).toEqual(['my-tab 🟢'])
       await manager.destroy()
     })
   })
@@ -249,7 +254,7 @@ describe('TabTitleManager', () => {
           }
         },
         async currentTabTitle() {
-          return undefined
+          return 'my-tab'
         },
       }
       const { actor, manager } = await createHarness({
@@ -259,7 +264,7 @@ describe('TabTitleManager', () => {
 
       const renderPromise = manager.renderImmediate()
       await new Promise(r => setTimeout(r, 10))
-      expect(calls).toEqual(['🟢'])
+      expect(calls).toEqual(['my-tab 🟢'])
       await actor.handleEvent(sessionCreated('s1'))
       await actor.handleEvent(sessionStatus('s1', 'busy'))
       manager.scheduleUpdate()
@@ -267,7 +272,7 @@ describe('TabTitleManager', () => {
       resolveFirstRename?.()
       await renderPromise
 
-      expect(calls).toEqual(['🟢', '⚡'])
+      expect(calls).toEqual(['my-tab 🟢', 'my-tab ⚡'])
       await manager.destroy()
     })
   })
@@ -284,6 +289,71 @@ describe('TabTitleManager', () => {
       await manager.renderImmediate()
 
       expect(calls).toEqual([])
+      await manager.destroy()
+    })
+  })
+
+  it('appends the status emoji when the current title has no trailing emoji', async () => {
+    await withZellijEnv('1', async () => {
+      const { manager, calls } = await createHarness({
+        currentTabTitle: 'my-workspace',
+      })
+
+      await manager.renderImmediate()
+      expect(calls).toEqual(['my-workspace 🟢'])
+      await manager.destroy()
+    })
+  })
+
+  it('replaces a trailing status emoji on status change', async () => {
+    await withZellijEnv('1', async () => {
+      const { actor, manager, calls } = await createHarness({
+        currentTabTitle: 'my-workspace 🟢',
+        debounceMs: 10,
+      })
+
+      await applyEvent(actor, manager, sessionCreated('s1'))
+      await applyEvent(actor, manager, sessionStatus('s1', 'busy'))
+
+      await new Promise(r => setTimeout(r, 30))
+      expect(calls).toEqual(['my-workspace ⚡'])
+      await manager.destroy()
+    })
+  })
+
+  it('handles current title that is exactly a status emoji', async () => {
+    await withZellijEnv('1', async () => {
+      const { manager, calls } = await createHarness({
+        currentTabTitle: '🟢',
+      })
+
+      await manager.renderImmediate()
+      expect(calls).toEqual(['🟢'])
+      await manager.destroy()
+    })
+  })
+
+  it('skips sync when currentTabTitle returns undefined', async () => {
+    await withZellijEnv('1', async () => {
+      const { manager, calls } = await createHarness({
+        currentTabTitle: undefined,
+      })
+
+      await manager.renderImmediate()
+      expect(calls).toEqual([])
+      await manager.destroy()
+    })
+  })
+
+  it('appends emoji when the title contains emoji in the middle but not at the end', async () => {
+    await withZellijEnv('1', async () => {
+      const { manager, calls } = await createHarness({
+        currentTabTitle: '🟢 my-project',
+      })
+
+      await manager.renderImmediate()
+      // Emoji is at start, not at end, so append
+      expect(calls).toEqual(['🟢 my-project 🟢'])
       await manager.destroy()
     })
   })

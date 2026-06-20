@@ -215,7 +215,7 @@ Returns:
 - Credentials typed by the user stay in their terminal scrollback, never reach the agent or the LLM. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### Dynamic tab title
-Update the Zellij tab title to show the current OpenCode state (idle / running / needs-input).
+Append a status emoji to the current Zellij tab title to show the OpenCode state (idle / running / needs-input). The status emoji is appended at the end and replaced on state changes, so your original tab title is preserved.
 
 **Spec:**
 
