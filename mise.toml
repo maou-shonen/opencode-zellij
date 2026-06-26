@@ -47,4 +47,4 @@ fi
 
 [tasks.publish-preview]
 description = "Publish a preview package via pkg-pr-new"
-run = "bunx --bun pkg-pr-new publish"
+run = "bunx pkg-pr-new publish --bun"
