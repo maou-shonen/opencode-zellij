@@ -1,12 +1,11 @@
 name: Publish Preview Package
 
 on:
-  push:
-    branches:
-      - '**'
-    tags-ignore:
-      - '**'
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: read
@@ -37,4 +36,4 @@ jobs:
         run: mise run build
 
       - name: Publish preview package
-        run: bun run publish:preview
+        run: mise run publish-preview
