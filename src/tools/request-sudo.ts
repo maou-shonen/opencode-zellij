@@ -29,10 +29,33 @@ export function buildReviewScript(summary: string, scripts: Array<{ command: str
     lines.push(`printf '  $ %s\\n' ${shellQuote(script.command)}`)
   })
 
+  // 3s countdown before the confirmation prompt. We use carriage return
+  // (`\r`) to overwrite the same line so the number ticks down (3 → 2 → 1)
+  // instead of stacking three separate lines. This gives the user time to
+  // read the summary and focus the floating pane before they decide.
   lines.push(
     'printf \'\\n%s\\n\' \'This pane is human-input-only. The agent cannot type here.\'',
-    'read -r -p \'Type YES to run these commands, anything else to cancel: \' answer',
-    'if [ "$answer" != YES ]; then printf \'%s\\n\' \'Cancelled by user.\'; exit 130; fi',
+    'printf \'Waiting 3s to prevent accidental confirmation: 3\\r\'',
+    'sleep 1',
+    'printf \'Waiting 3s to prevent accidental confirmation: 2\\r\'',
+    'sleep 1',
+    'printf \'Waiting 3s to prevent accidental confirmation: 1\\r\'',
+    'sleep 1',
+    'while true; do',
+    '  printf \'\\n%s\' \'[y/n]: \'',
+    '  read -r answer',
+    // [y/n] convention with strict input: only `y`/`Y` approves, only
+    // `n`/`N` cancels. Anything else (empty Enter, stray key, gibberish)
+    // loops back to the prompt with feedback. This forces the user to make
+    // an explicit, deliberate choice — empty Enter from a fast double-tap
+    // or an accidental keypress must not silently cancel the request.
+    '  case "$answer" in',
+    '    [Yy]) break ;;',
+    '    [Nn]) printf \'%s\\n\' \'Cancelled by user.\'; exit 130 ;;',
+    '    "") printf \'%s\\n\' \'Empty input. Please type y or n explicitly.\' ;;',
+    '    *) printf \'%s\\n\' "Please type y or n (got: $answer)." ;;',
+    '  esac',
+    'done',
     'status=0',
   )
 
@@ -49,53 +72,81 @@ export function buildReviewScript(summary: string, scripts: Array<{ command: str
   return lines.join('\n')
 }
 
-export const requestSudoTool = tool({
-  description: 'Open a human-reviewed, human-input-only Zellij pane for sudo or other privileged commands.',
-  args: {
-    summary: schema.string().min(1).describe('TL;DR of why privileged or human-reviewed execution is needed.'),
-    scripts: schema
-      .array(
-        schema.object({
-          command: schema.string().min(1).describe('Command or script to run after the user explicitly approves in the pane.'),
-          description: schema.string().min(1).describe('Why this command is needed and what it is expected to change.'),
-        }),
-      )
-      .min(1)
-      .describe('Commands shown to the user for review before execution.'),
-  },
-  async execute(args, context) {
-    const cwd = context.directory
-    const exitCodeToken = createExitCodeToken()
-    assertSudoPaneAllowed()
+export interface RequestSudoToolOptions {
+  mode: 'floating' | 'fullscreen'
+  floatingSize: { width: string, height: string, pinned: boolean }
+}
 
-    const command = buildReviewScript(args.summary, args.scripts)
-    const title = createOpenCodePaneTitle('zellij_pty_request_sudo')
-    const paneId = await zellijCli.newPane({
-      command: 'bash',
-      args: ['-lc', command],
-      cwd,
-      title,
-      floating: true,
-      exitCodeToken,
-    })
+export const DEFAULT_REQUEST_SUDO_TOOL_OPTIONS: RequestSudoToolOptions = {
+  mode: 'floating',
+  floatingSize: { width: '80%', height: '60%', pinned: true },
+}
 
-    const session = sessionManager.create({
-      openCodeSessionId: context.sessionID,
-      paneId,
-      title,
-      command: 'zellij_pty_request_sudo',
-      args: [],
-      cwd,
-      allowAgentInput: false,
-      humanInputOnly: true,
-      exitCodeToken,
-    })
-    registerPaneForWatchdog(session)
-    await subscriberManager.start(session)
+export function buildPaneTitle(summary: string): string {
+  const trimmed = summary.trim().replace(/\s+/g, ' ')
+  const limited = trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed
+  return `⚠ sudo: ${limited}`
+}
 
-    return jsonResponse({
-      session: publicSession(session, { agentWritable: false }),
-      output: readOutputSnapshot(session.id),
-    })
-  },
-})
+export function createRequestSudoTool(options: RequestSudoToolOptions = DEFAULT_REQUEST_SUDO_TOOL_OPTIONS) {
+  const isFloating = options.mode === 'floating'
+  return tool({
+    description: 'Open a human-reviewed, human-input-only Zellij pane for sudo or other privileged commands.',
+    args: {
+      summary: schema.string().min(1).describe('TL;DR of why privileged or human-reviewed execution is needed.'),
+      scripts: schema
+        .array(
+          schema.object({
+            command: schema.string().min(1).describe('Command or script to run after the user explicitly approves in the pane.'),
+            description: schema.string().min(1).describe('Why this command is needed and what it is expected to change.'),
+          }),
+        )
+        .min(1)
+        .describe('Commands shown to the user for review before execution.'),
+    },
+    async execute(args, context) {
+      const cwd = context.directory
+      const exitCodeToken = createExitCodeToken()
+      assertSudoPaneAllowed()
+
+      const command = buildReviewScript(args.summary, args.scripts)
+      const title = createOpenCodePaneTitle(buildPaneTitle(args.summary))
+      const paneId = await zellijCli.newPane({
+        command: 'bash',
+        args: ['-lc', command],
+        cwd,
+        title,
+        floating: isFloating,
+        floatingWidth: isFloating ? options.floatingSize.width : undefined,
+        floatingHeight: isFloating ? options.floatingSize.height : undefined,
+        floatingPinned: isFloating ? options.floatingSize.pinned : undefined,
+        // The sudo request is single-shot: when bash exits (YES ran the
+        // commands, or the user rejected), Zellij closes the pane so the
+        // user isn't left looking at a dead terminal with stale output.
+        closeOnExit: true,
+        exitCodeToken,
+      })
+
+      const session = sessionManager.create({
+        openCodeSessionId: context.sessionID,
+        paneId,
+        title,
+        command: 'zellij_pty_request_sudo',
+        args: [],
+        cwd,
+        allowAgentInput: false,
+        humanInputOnly: true,
+        exitCodeToken,
+      })
+      registerPaneForWatchdog(session)
+      await subscriberManager.start(session)
+
+      return jsonResponse({
+        session: publicSession(session, { agentWritable: false }),
+        output: readOutputSnapshot(session.id),
+      })
+    },
+  })
+}
+
+export const requestSudoTool = createRequestSudoTool()

@@ -4,14 +4,13 @@ import { sessionManager } from '../pty/manager.js'
 import { assertWriteSizeAllowed, chunkWriteData } from '../pty/write-data.js'
 import { errorMessage } from '../utils/errors.js'
 import { zellijCli } from '../zellij/cli.js'
-import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, publicSession } from './format.js'
 import { emptyOutputSnapshot, readOutputSnapshot } from './output.js'
 
 const schema = tool.schema
 
 export const zellijPtyWriteTool = tool({
-  description: 'Write stdin to a Zellij PTY session. Refuses human-input-only sessions.',
+  description: 'Write stdin to a Zellij PTY session. Throws on human-input-only sessions; agent must not bypass this guard (e.g. via `zellij action write-chars`).',
   args: {
     id: schema.string().describe('zellij-pty session id returned by zellij_pty_spawn or zellij_pty_request_sudo.'),
     data: schema.string().describe('Text to write. Use \u0003 to send Ctrl-C.'),
@@ -21,11 +20,14 @@ export const zellijPtyWriteTool = tool({
   async execute(args) {
     const session = sessionManager.get(args.id)
     if (session.humanInputOnly || !session.allowAgentInput) {
-      return jsonResponse({
-        session: publicSession(session),
-        output: subscriberManager.has(session.id) ? readOutputSnapshot(session.id, { maxLines: args.maxLines }) : emptyOutputSnapshot(),
-        warnings: ['Agent writes to human-input-only sessions are forbidden.'],
-      })
+      // Throw rather than return a warning so the call is unambiguously
+      // rejected. The agent can still type into a human-input-only pane by
+      // shelling out to `zellij action write-chars` — that path is a
+      // conscious bypass, not an accidental "oh the write silently failed".
+      throw new Error(
+        `zellij_pty_write refused: session ${session.id} (${session.command}) is human-input-only. `
+        + `The user owns decisions for this pane. Do not type into it.`,
+      )
     }
 
     if (args.data === '\u0003' || args.data === '\x03') {

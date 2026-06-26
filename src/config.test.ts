@@ -71,6 +71,48 @@ describe('plugin config', () => {
     expect(result.config.pty.sudoPane).toBe('hide')
   })
 
+  it('defaults the sudo pane mode to floating with sane size and pinned=true', async () => {
+    const result = await loadConfig({ directory: join(tempRoot, 'project') })
+
+    expect(result.config.pty.sudoPaneMode).toBe('floating')
+    expect(result.config.pty.sudoPaneFloatingSize).toEqual({
+      width: '80%',
+      height: '60%',
+      pinned: true,
+    })
+  })
+
+  it('accepts sudoPaneMode fullscreen and partial floatingSize overrides', async () => {
+    await writeConfig(
+      join(tempRoot, 'project', '.opencode'),
+      'opencode-zellij.config.jsonc',
+      '{ "pty": { "sudoPaneMode": "fullscreen", "sudoPaneFloatingSize": { "width": "50%" } } }',
+    )
+
+    const result = await loadConfig({ directory: join(tempRoot, 'project') })
+
+    expect(result.config.pty.sudoPaneMode).toBe('fullscreen')
+    // width is overridden; height and pinned fall back to defaults
+    expect(result.config.pty.sudoPaneFloatingSize).toEqual({
+      width: '50%',
+      height: '60%',
+      pinned: true,
+    })
+  })
+
+  it('rejects unknown fields on sudoPaneFloatingSize', async () => {
+    await writeConfig(
+      join(tempRoot, 'project', '.opencode'),
+      'opencode-zellij.config.jsonc',
+      '{ "pty": { "sudoPaneFloatingSize": { "width": "50%", "depth": "50%" } } }',
+    )
+
+    const result = await loadConfig({ directory: join(tempRoot, 'project') })
+
+    expect(result.sources.project).toBeUndefined()
+    expect(result.warnings.some(w => w.includes('invalid config shape'))).toBe(true)
+  })
+
   it('ignores pre-release legacy basename files', async () => {
     await writeConfig(join(tempRoot, 'project', '.opencode'), 'opencode-zellij.jsonc', '{ "tabTitle": { "emojiIdle": "legacy" } }')
 

@@ -105,7 +105,7 @@ Returns:
 **Spec:**
 
 - 對互動式 pane 送出回應或按鍵,並看到它怎麼反應。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- 不要意外打到 sudo pane —— 它會拒絕寫入。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- 寫入 `humanInputOnly` session(任何 `zellij_pty_request_sudo` pane)**會丟 error**,不會 silently fail — agent 不該用 `zellij action write-chars` 直接繞過。user 才擁有那個 pane 的輸入權。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### `zellij_pty_list` 工具
 列出 plugin 正在追蹤的 pane。
@@ -211,8 +211,10 @@ Returns:
 
 **Spec:**
 
-- 把 privileged command 交給使用者審核 —— 他們看到 script,自己打 `YES`。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- 把 privileged command 交給使用者審核 —— 他們看到 script,用嚴格 `[y/n]` prompt 確認,**沒有預設**:user 必須明確打 `y`(或 `Y`)才會同意,打 `n`(或 `N`)取消。**空 Enter 跟任何亂打都會被退回並 re-prompt**(「Empty input. Please type y or n explicitly.」)— 防止 user 不小心按到 Enter 結果 sudo 莫名被取消。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - 使用者打的 credentials 只留在 Zellij scrollback,不會進到 agent 或 LLM。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- `[y/n]` prompt 之前會跑 3s 倒數,數字用 `\r` overwrite 在同一行遞減(3 → 2 → 1);空 Enter 跟亂打會被退回並 re-prompt,只有明確的 `y`/`Y` 同意、`n`/`N` 取消。倒數跟 prompt 會在 Zellij pane 照順序渲染出來。 [`src/tools/request-sudo.test.ts`](src/tools/request-sudo.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- Pane spawn 時帶 `--close-on-exit`,bash 一退出 Zellij 就關 pane —— 不會在使用者批准或取消後留下一個卡住的空 pane。 [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### Dynamic tab title
 在當前 Zellij tab title 末尾追加狀態 emoji，顯示 OpenCode 目前的狀態（idle / running / needs-input）。狀態變化時只取代末尾的 emoji，保留你原本的 tab title。
@@ -230,6 +232,12 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 
 **`pty.sudoPane`** `"allow" | "deny" | "hide"`,預設 `"allow"`。控制 `zellij_pty_request_sudo`:`"hide"` 移除 tool,`"deny"` 保留但每次都拒絕呼叫,`"allow"`(預設)是正常 tool。
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
+
+**`pty.sudoPaneMode`** `"floating" | "fullscreen"`,預設 `"floating"`。sudo 請求 pane 的呈現方式。`floating` 開一個大、pinned 的浮動 pane,**不偷 keyboard focus**;`fullscreen` 開一個非浮動 pane,Zellij 自動 focus 進去。如果你常常看不到浮動 pane,改用 `fullscreen`。
+**Spec:** [`src/tools/request-sudo.test.ts`](src/tools/request-sudo.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+
+**`pty.sudoPaneFloatingSize`** `{ width?: string, height?: string, pinned?: boolean }`。`sudoPaneMode` 為 `"floating"` 時浮動 pane 的大小。`width` / `height` 接受百分比字串(如 `"80%"`)或 bare integer(以 cells 為單位);`pinned` 讓 pane 永遠在最上層。預設:`{ width: "80%", height: "60%", pinned: true }`。
+**Spec:** [`src/config.test.ts`](src/config.test.ts), [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`,預設 `true`。為 `true` 時,`zellij_pty_read` 對已退出的 pane 回傳 output 後會關閉該 pane。
 **Spec:** [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
@@ -249,7 +257,9 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 {
   "$schema": "https://unpkg.com/opencode-zellij/opencode-zellij.schema.json",
   "pty": {
-    "sudoPane": "deny"
+    "sudoPane": "deny",
+    "sudoPaneMode": "floating",
+    "sudoPaneFloatingSize": { "width": "80%", "height": "60%", "pinned": true }
   },
   "tabTitle": {
     "emojiRunning": "🔥",

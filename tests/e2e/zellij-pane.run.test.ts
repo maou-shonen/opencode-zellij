@@ -527,8 +527,11 @@ describe('zellij_pty_request_sudo', () => {
       expect(requested.session.humanInputOnly).toBe(true)
       expect(requested.session.agentWritable).toBeUndefined()
 
-      const write = JSON.parse(await getTool(hooks, 'zellij_pty_write').execute({ id: sessionID, data: 'SHOULD_NOT_WRITE\n' }, ctx))
-      expect(write.warnings.join('\n')).toContain('forbidden')
+      // Writing to a human-input-only session must throw — silently
+      // returning a warning would let the agent think it succeeded.
+      await expect(
+        getTool(hooks, 'zellij_pty_write').execute({ id: sessionID, data: 'SHOULD_NOT_WRITE\n' }, ctx),
+      ).rejects.toThrow(/human-input-only/)
     }
     finally {
       if (sessionID)
@@ -536,6 +539,292 @@ describe('zellij_pty_request_sudo', () => {
       await disposeQuietly(hooks)
     }
   }, 15_000)
+
+  it('renders the summary, the ticking countdown, and the [y/n] prompt in the floating pane', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+    let paneId: string | undefined
+
+    try {
+      const requested = JSON.parse(
+        await getTool(hooks, 'zellij_pty_request_sudo').execute(
+          {
+            summary: 'Countdown rendering smoke.',
+            scripts: [{ command: 'echo countdown-rendering-ok', description: 'Verify countdown renders.' }],
+          },
+          ctx,
+        ),
+      )
+      sessionID = typeof requested.session?.id === 'string' ? requested.session.id : undefined
+      paneId = typeof requested.session?.paneId === 'string' ? requested.session.paneId : undefined
+      if (!sessionID || !paneId)
+        throw new Error('Expected session id and pane id')
+
+      // Dump the rendered pane directly. The subscriber's in-memory buffer
+      // dedups Zellij subscribe snapshots imperfectly, so its content does
+      // not always reflect the actual visible pane. `dump-screen --full`
+      // gives us the current rendered text plus scrollback without that
+      // dedup, so we can verify what the user actually sees.
+      const dumpPane = () => runZellij(['action', 'dump-screen', '--pane-id', paneId!, '--full'])
+
+      // Wait for the [y/n] prompt to appear in the rendered pane. The
+      // script uses \r to overwrite the countdown on a single line, so by
+      // the time the prompt is visible only the final "1" tick is left
+      // on the countdown line.
+      const dump = await waitFor(
+        dumpPane,
+        text => text.includes('[y/n]:'),
+        { timeoutMs: 8_000, intervalMs: 200 },
+      )
+
+      // Summary
+      expect(dump).toContain('=== OpenCode sudo request ===')
+      expect(dump).toContain('Countdown rendering smoke.')
+      expect(dump).toContain('Waiting 3s to prevent accidental confirmation')
+      // Countdown overwrites the same line, so only the last tick is visible.
+      expect(dump).toMatch(/Waiting 3s to prevent accidental confirmation: 1[^2]/)
+      // [y/n] prompt — no default, user must type y explicitly to approve.
+      expect(dump).toContain('[y/n]:')
+
+      // The prompt must appear after the (final) countdown tick on the
+      // rendered pane.
+      const idxCountdown = dump.search(/Waiting 3s to prevent accidental confirmation: 1/)
+      const idxPrompt = dump.indexOf('[y/n]:')
+      expect(idxPrompt).toBeGreaterThan(idxCountdown)
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, 15_000)
+
+  it('runs the requested commands when the user types y after the countdown', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+    let paneId: string | undefined
+
+    try {
+      const requested = JSON.parse(
+        await getTool(hooks, 'zellij_pty_request_sudo').execute(
+          {
+            summary: 'YES execution smoke.',
+            scripts: [{ command: 'echo yes-flow-ok', description: 'Verify y runs the command.' }],
+          },
+          ctx,
+        ),
+      )
+      sessionID = typeof requested.session?.id === 'string' ? requested.session.id : undefined
+      paneId = typeof requested.session?.paneId === 'string' ? requested.session.paneId : undefined
+      if (!sessionID || !paneId)
+        throw new Error('Expected requested pane session id and pane id')
+
+      await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_read').execute(
+            { id: sessionID, grep: '[y/n]:', maxLines: 50, cleanupExitedPaneOnRead: false },
+            ctx,
+          ),
+        ),
+        result => result.output.text.includes('[y/n]:'),
+        { timeoutMs: 8_000, intervalMs: 200 },
+      )
+
+      // The user must explicitly type `y` — empty Enter cancels. We send
+      // `y\n` to drive the approval path; the plugin's `humanInputOnly`
+      // guard only blocks writes through the plugin's own `zellij_pty_write`
+      // tool, not raw Zellij actions.
+      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'y\n'])
+
+      const output = await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_read').execute(
+            { id: sessionID, grep: 'yes-flow-ok', maxLines: 50, cleanupExitedPaneOnRead: false },
+            ctx,
+          ),
+        ),
+        result => result.output.text.includes('yes-flow-ok'),
+        { timeoutMs: 8_000, intervalMs: 200 },
+      )
+      expect(output.output.text).toContain('yes-flow-ok')
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, 20_000)
+
+  it('re-prompts when the user presses empty Enter or types an invalid value', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+    let paneId: string | undefined
+
+    try {
+      const requested = JSON.parse(
+        await getTool(hooks, 'zellij_pty_request_sudo').execute(
+          {
+            summary: 'Strict [y/n] smoke.',
+            scripts: [{ command: 'echo should-not-run', description: 'Should never execute.' }],
+          },
+          ctx,
+        ),
+      )
+      sessionID = typeof requested.session?.id === 'string' ? requested.session.id : undefined
+      paneId = typeof requested.session?.paneId === 'string' ? requested.session.paneId : undefined
+      if (!sessionID || !paneId)
+        throw new Error('Expected session id and pane id')
+
+      // Wait for the prompt to appear.
+      await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_read').execute(
+            { id: sessionID, grep: '[y/n]:', maxLines: 50, cleanupExitedPaneOnRead: false },
+            ctx,
+          ),
+        ),
+        result => result.output.text.includes('[y/n]:'),
+        { timeoutMs: 8_000, intervalMs: 200 },
+      )
+
+      // First, empty Enter — must re-prompt, not cancel.
+      await runZellij(['action', 'write-chars', '--pane-id', paneId, '\n'])
+
+      // The script loops back; verify the re-prompt hint is now in the buffer.
+      await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_read').execute(
+            { id: sessionID, grep: 'Empty input', maxLines: 50, cleanupExitedPaneOnRead: false },
+            ctx,
+          ),
+        ),
+        result => result.output.text.includes('Empty input'),
+        { timeoutMs: 5_000, intervalMs: 200 },
+      )
+
+      // Second, gibberish input — also must re-prompt.
+      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'maybe\n'])
+
+      // Grep for `(got: ` specifically so we don't accidentally match the
+      // empty-input re-prompt ("Please type y or n explicitly" is also a
+      // substring of the empty-input hint).
+      const gibberishRead = await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_read').execute(
+            { id: sessionID, grep: '\\(got:', maxLines: 50, cleanupExitedPaneOnRead: false },
+            ctx,
+          ),
+        ),
+        result => result.output.text.includes('(got:'),
+        { timeoutMs: 5_000, intervalMs: 200 },
+      )
+      // The re-prompt must include the user's actual input (not the
+      // literal `%s` placeholder, which would mean we forgot to interpolate
+      // `$answer`).
+      expect(gibberishRead.output.text).toContain('(got: maybe)')
+
+      // The session must still be running — neither empty Enter nor
+      // invalid input should have terminated the script.
+      const sessionList = JSON.parse(
+        await getTool(hooks, 'zellij_pty_list').execute({}, ctx),
+      )
+      const entry = sessionList.sessions.find((e: Record<string, unknown>) => e.id === sessionID)
+      expect(entry?.status).toBe('running')
+
+      // Third, a real answer — `n` finally cancels and closes the pane.
+      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'n\n'])
+
+      const list = await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_list').execute({}, ctx),
+        ),
+        (result) => {
+          const e = Array.isArray(result.sessions)
+            ? result.sessions.find((e: Record<string, unknown>) => e.id === sessionID)
+            : undefined
+          return Boolean(e && e.status === 'exited' && e.exitCode === 130)
+        },
+        { timeoutMs: 10_000, intervalMs: 200 },
+      )
+      expect(list).toBeDefined()
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, 30_000)
+
+  it('cancels the request and closes the pane when the user types n', async () => {
+    const hooks = await loadPlugin()
+    const ctx = context()
+    let sessionID: string | undefined
+    let paneId: string | undefined
+
+    try {
+      const requested = JSON.parse(
+        await getTool(hooks, 'zellij_pty_request_sudo').execute(
+          {
+            summary: 'Cancel flow smoke.',
+            scripts: [{ command: 'echo should-not-run', description: 'Should never execute.' }],
+          },
+          ctx,
+        ),
+      )
+      sessionID = typeof requested.session?.id === 'string' ? requested.session.id : undefined
+      paneId = typeof requested.session?.paneId === 'string' ? requested.session.paneId : undefined
+      if (!sessionID || !paneId)
+        throw new Error('Expected session id and pane id')
+
+      // Wait for the prompt before sending the reject input.
+      await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_read').execute(
+            { id: sessionID, grep: '[y/n]:', maxLines: 50, cleanupExitedPaneOnRead: false },
+            ctx,
+          ),
+        ),
+        result => result.output.text.includes('[y/n]:'),
+        { timeoutMs: 8_000, intervalMs: 200 },
+      )
+
+      // Send a non-Y answer. With [y/n], anything except Y/y cancels —
+      // including `n`, `no`, empty Enter, or stray keys.
+      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'n\n'])
+
+      // The script exits 130 after printing "Cancelled by user.". Wait for
+      // the session to be marked terminal with that exit code. With
+      // --close-on-exit, Zellij also closes the pane immediately, so we
+      // verify via the plugin's session list rather than dump-screen.
+      const list = await waitFor(
+        async () => JSON.parse(
+          await getTool(hooks, 'zellij_pty_list').execute({}, ctx),
+        ),
+        (result) => {
+          const entry = Array.isArray(result.sessions)
+            ? result.sessions.find((e: Record<string, unknown>) => e.id === sessionID)
+            : undefined
+          return Boolean(entry && entry.status === 'exited' && entry.exitCode === 130)
+        },
+        { timeoutMs: 10_000, intervalMs: 200 },
+      )
+      expect(list).toBeDefined()
+
+      // The pane should also be gone from Zellij's own pane list, because
+      // we spawned it with `--close-on-exit`. This is the user-facing
+      // behavior: after a cancel, no dead terminal is left behind.
+      const panesAfterCancel = await runZellij(['action', 'list-panes', '--json'])
+      expect(panesAfterCancel).not.toContain(`"pane_id":${paneId}`)
+    }
+    finally {
+      if (sessionID)
+        await killQuietly(hooks, sessionID, ctx)
+      await disposeQuietly(hooks)
+    }
+  }, 20_000)
 })
 
 describe('pane completion event', () => {

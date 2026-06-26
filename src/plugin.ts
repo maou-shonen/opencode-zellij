@@ -8,7 +8,7 @@ import { sessionManager } from './pty/manager.js'
 import { zellijPtyKillTool } from './tools/kill.js'
 import { zellijPtyListTool } from './tools/list.js'
 import { createZellijPtyReadTool } from './tools/read.js'
-import { requestSudoTool } from './tools/request-sudo.js'
+import { createRequestSudoTool } from './tools/request-sudo.js'
 import { zellijPtySpawnTool } from './tools/spawn.js'
 import { zellijPtyWriteTool } from './tools/write.js'
 import { debug } from './utils/debug.js'
@@ -130,7 +130,14 @@ export function createZellijPtyPlugin(dependencies: ZellijPtyPluginDependencies 
       tool: config.pty.enabled
         ? {
             ...createPtyTools(config.pty.cleanupExitedPaneOnRead),
-            ...(config.pty.sudoPane === 'hide' ? {} : { zellij_pty_request_sudo: requestSudoTool }),
+            ...(config.pty.sudoPane === 'hide'
+              ? {}
+              : {
+                  zellij_pty_request_sudo: createRequestSudoTool({
+                    mode: config.pty.sudoPaneMode,
+                    floatingSize: config.pty.sudoPaneFloatingSize,
+                  }),
+                }),
           }
         : {},
     }

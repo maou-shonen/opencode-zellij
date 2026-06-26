@@ -60,6 +60,38 @@
             "hide"
           ],
           "default": "allow"
+        },
+        "sudoPaneMode": {
+          "description": "How the sudo request pane is presented to the user. `floating` (default) opens a large, pinned floating pane without stealing focus; `fullscreen` opens a non-floating pane that Zellij focuses automatically.",
+          "type": "string",
+          "enum": [
+            "floating",
+            "fullscreen"
+          ]
+        },
+        "sudoPaneFloatingSize": {
+          "description": "Size of the floating sudo pane. `width`/`height` accept a percent string (e.g. `80%`) or a bare integer in cells. `pinned` keeps the pane on top of other floating panes.",
+          "type": "object",
+          "properties": {
+            "width": {
+              "default": "80%",
+              "type": "string"
+            },
+            "height": {
+              "default": "60%",
+              "type": "string"
+            },
+            "pinned": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "pinned"
+          ],
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

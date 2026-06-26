@@ -7,6 +7,12 @@ import { parseJSON, parseJSONC } from 'confbox'
 import { z } from 'zod'
 
 const sudoPaneSchema = z.enum(['allow', 'deny', 'hide'])
+const sudoPaneModeSchema = z.enum(['floating', 'fullscreen'])
+const sudoPaneFloatingSizeSchema = z.object({
+  width: z.string().default('80%'),
+  height: z.string().default('60%'),
+  pinned: z.boolean().default(true),
+}).strict()
 
 export interface TabTitleConfig {
   enabled: boolean
@@ -16,13 +22,22 @@ export interface TabTitleConfig {
   debounceMs: number
 }
 
+export interface SudoPaneFloatingSize {
+  width: string
+  height: string
+  pinned: boolean
+}
+
 export interface PtyConfig {
   enabled: boolean
   cleanupExitedPaneOnRead: boolean
   sudoPane: SudoPaneMode
+  sudoPaneMode: SudoPaneModeKind
+  sudoPaneFloatingSize: SudoPaneFloatingSize
 }
 
 export type SudoPaneMode = z.infer<typeof sudoPaneSchema>
+export type SudoPaneModeKind = z.infer<typeof sudoPaneModeSchema>
 
 export interface ZellijPluginConfig {
   tabTitle: TabTitleConfig
@@ -60,6 +75,8 @@ const ptyLayerSchema = z.object({
   enabled: z.boolean().optional().describe('Enable Zellij-backed PTY tools.'),
   cleanupExitedPaneOnRead: z.boolean().optional().describe('Remove exited PTY panes after they are read.'),
   sudoPane: sudoPaneSchema.optional().describe('Controls whether the sudo pane tool is available, denied, or hidden.'),
+  sudoPaneMode: sudoPaneModeSchema.optional().describe('How the sudo request pane is presented to the user. `floating` (default) opens a large, pinned floating pane without stealing focus; `fullscreen` opens a non-floating pane that Zellij focuses automatically.'),
+  sudoPaneFloatingSize: sudoPaneFloatingSizeSchema.optional().describe('Size of the floating sudo pane. `width`/`height` accept a percent string (e.g. `80%`) or a bare integer in cells. `pinned` keeps the pane on top of other floating panes.'),
 }).strict()
 
 export const sidecarConfigSchema = z.object({
@@ -80,6 +97,8 @@ export const defaultConfig: ZellijPluginConfig = {
     enabled: true,
     cleanupExitedPaneOnRead: true,
     sudoPane: 'allow',
+    sudoPaneMode: 'floating',
+    sudoPaneFloatingSize: { width: '80%', height: '60%', pinned: true },
   },
 }
 
@@ -124,6 +143,8 @@ function mergeConfig(user?: ConfigLayer | undefined, project?: ConfigLayer | und
       enabled: project?.pty?.enabled ?? user?.pty?.enabled ?? defaultConfig.pty.enabled,
       cleanupExitedPaneOnRead: project?.pty?.cleanupExitedPaneOnRead ?? user?.pty?.cleanupExitedPaneOnRead ?? defaultConfig.pty.cleanupExitedPaneOnRead,
       sudoPane: project?.pty?.sudoPane ?? user?.pty?.sudoPane ?? defaultConfig.pty.sudoPane,
+      sudoPaneMode: project?.pty?.sudoPaneMode ?? user?.pty?.sudoPaneMode ?? defaultConfig.pty.sudoPaneMode,
+      sudoPaneFloatingSize: project?.pty?.sudoPaneFloatingSize ?? user?.pty?.sudoPaneFloatingSize ?? defaultConfig.pty.sudoPaneFloatingSize,
     },
   }
 }

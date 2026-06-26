@@ -79,11 +79,45 @@ describe('Zellij CLI helpers', () => {
     })
   })
 
-  it('keeps floating panes near current pane as well', () => {
+  it('omits --near-current-pane for floating panes so they use their own positioning', () => {
     withZellijEnv('1', () => {
-      expect(buildNewPaneActionArgs({ command: 'bash', floating: true })).toContain('--near-current-pane')
-      expect(buildNewPaneActionArgs({ command: 'bash', floating: true })).toContain('--floating')
+      const args = buildNewPaneActionArgs({ command: 'bash', floating: true })
+      expect(args).not.toContain('--near-current-pane')
+      expect(args).toContain('--floating')
     })
+  })
+
+  it('passes through floating width, height, and pinned flags', () => {
+    expect(buildNewPaneActionArgs({
+      command: 'bash',
+      floating: true,
+      floatingWidth: '80%',
+      floatingHeight: '60%',
+      floatingPinned: true,
+    })).toEqual(expect.arrayContaining([
+      '--floating',
+      '--width', '80%',
+      '--height', '60%',
+      '--pinned', 'true',
+    ]))
+  })
+
+  it('omits floating size flags when not provided', () => {
+    const args = buildNewPaneActionArgs({ command: 'bash', floating: true })
+    expect(args).not.toContain('--width')
+    expect(args).not.toContain('--height')
+    // `--pinned` is only added when explicitly enabled; never as a bare flag.
+    expect(args.some(arg => arg.startsWith('--pinned'))).toBe(false)
+  })
+
+  it('passes --close-on-exit when requested so the pane closes after the command finishes', () => {
+    const args = buildNewPaneActionArgs({ command: 'bash', closeOnExit: true })
+    expect(args).toContain('--close-on-exit')
+  })
+
+  it('omits --close-on-exit by default so spawned panes survive the command', () => {
+    const args = buildNewPaneActionArgs({ command: 'bash' })
+    expect(args).not.toContain('--close-on-exit')
   })
 
   it('prefixes actions with explicit Zellij session when provided', () => {

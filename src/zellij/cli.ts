@@ -12,6 +12,10 @@ export type NewPaneOptions = CommandInput & {
   cwd?: string | undefined
   title?: string | undefined
   floating?: boolean | undefined
+  floatingWidth?: string | undefined
+  floatingHeight?: string | undefined
+  floatingPinned?: boolean | undefined
+  closeOnExit?: boolean | undefined
   exitCodeToken?: string | undefined
 }
 
@@ -39,15 +43,27 @@ export function zellijActionArgs(action: string, args: string[] = []): string[] 
 
 export function buildNewPaneActionArgs(options: NewPaneOptions): string[] {
   const args = ['action', 'new-pane']
-  if (process.env.ZELLIJ)
+  // `--near-current-pane` only applies to layout-bound (non-floating) panes.
+  // Floating panes use their own positioning (`--x`/`--y`/centered defaults)
+  // and anchoring via `--width`/`--height`/`--pinned`.
+  if (process.env.ZELLIJ && !options.floating)
     args.push('--near-current-pane')
 
   if (options.title)
     args.push('--name', options.title)
   if (options.cwd)
     args.push('--cwd', options.cwd)
-  if (options.floating)
+  if (options.floating) {
     args.push('--floating')
+    if (options.floatingWidth)
+      args.push('--width', options.floatingWidth)
+    if (options.floatingHeight)
+      args.push('--height', options.floatingHeight)
+    if (options.floatingPinned)
+      args.push('--pinned', 'true')
+  }
+  if (options.closeOnExit)
+    args.push('--close-on-exit')
 
   args.push('--', ...buildCommandArgv(options, { exitCodeToken: options.exitCodeToken }))
   return args

@@ -105,7 +105,7 @@ Returns:
 **Spec:**
 
 - Send a reply (or keystroke) to an interactive pane and see how it responded. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- You can't accidentally type into a sudo pane — the write is refused. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- Writing to a `humanInputOnly` session (any `zellij_pty_request_sudo` pane) **throws** an error from this tool — it does not silently fail with a warning. The agent must not bypass this guard by shelling out to `zellij action write-chars` directly; the user owns all input to those panes. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### `zellij_pty_list` tool
 List the panes this plugin is tracking.
@@ -211,8 +211,11 @@ Returns:
 
 **Spec:**
 
-- Hand off a privileged command for the user to review and approve — they see the script and type `YES` themselves. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- Hand off a privileged command for the user to review and approve — they see the script and confirm via a strict `[y/n]` prompt with **no implicit default**. The user must type `y` (or `Y`) explicitly to approve, or `n` (or `N`) to cancel. **Empty Enter and any other input loops back to the prompt with feedback** — a stray Enter from a fast double-tap must not silently cancel a request the user never explicitly declined. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - Credentials typed by the user stay in their terminal scrollback, never reach the agent or the LLM. [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- A 3s countdown ticks down on a single line (3 → 2 → 1, using `\r` overwrites) before the strict `[y/n]` prompt. Empty Enter and stray input are rejected with feedback and re-prompted; only explicit `y`/`Y` approves and only `n`/`N` cancels. The countdown and prompt render in the Zellij pane in the expected order. [`src/tools/request-sudo.test.ts`](src/tools/request-sudo.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- The pane is spawned with `--close-on-exit`, so Zellij closes the floating pane the moment bash exits — the user is not left looking at a dead terminal with stale output after approval or cancel. [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- The pane is large and pinned by default (`sudoPaneFloatingSize`) and the title includes a `⚠ sudo:` prefix so the user can spot the request in their Zellij layout. The default mode is `floating`, which does not steal keyboard focus; switch `sudoPaneMode` to `fullscreen` if you keep missing the floating pane. [`src/config.test.ts`](src/config.test.ts), [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts)
 
 ### Dynamic tab title
 Append a status emoji to the current Zellij tab title to show the OpenCode state (idle / running / needs-input). The status emoji is appended at the end and replaced on state changes, so your original tab title is preserved.
@@ -230,6 +233,12 @@ Sidecar config files load from `~/.config/opencode/opencode-zellij.config.jsonc`
 
 **`pty.sudoPane`** `"allow" | "deny" | "hide"`, default `"allow"`. Controls `zellij_pty_request_sudo`: `"hide"` removes the tool, `"deny"` keeps it but rejects every call, `"allow"` (default) is the normal tool.
 **Spec:** [`tests/integration/plugin-load.test.ts`](tests/integration/plugin-load.test.ts)
+
+**`pty.sudoPaneMode`** `"floating" | "fullscreen"`, default `"floating"`. How the sudo request pane is presented. `floating` opens a large, pinned floating pane that does not steal keyboard focus; `fullscreen` opens a non-floating pane that Zellij focuses automatically. Switch to `fullscreen` if you keep missing the floating pane.
+**Spec:** [`src/tools/request-sudo.test.ts`](src/tools/request-sudo.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+
+**`pty.sudoPaneFloatingSize`** `{ width?: string, height?: string, pinned?: boolean }`. Size of the floating sudo pane when `sudoPaneMode` is `"floating"`. `width` and `height` accept a percent string (e.g. `"80%"`) or a bare integer in cells; `pinned` keeps the pane on top of other floating panes. Defaults: `{ width: "80%", height: "60%", pinned: true }`.
+**Spec:** [`src/config.test.ts`](src/config.test.ts), [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`, default `true`. When `true`, `zellij_pty_read` on an exited pane closes the pane after returning output.
 **Spec:** [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
@@ -249,7 +258,9 @@ Sidecar config files load from `~/.config/opencode/opencode-zellij.config.jsonc`
 {
   "$schema": "https://unpkg.com/opencode-zellij/opencode-zellij.schema.json",
   "pty": {
-    "sudoPane": "deny"
+    "sudoPane": "deny",
+    "sudoPaneMode": "floating",
+    "sudoPaneFloatingSize": { "width": "80%", "height": "60%", "pinned": true }
   },
   "tabTitle": {
     "emojiRunning": "🔥",
