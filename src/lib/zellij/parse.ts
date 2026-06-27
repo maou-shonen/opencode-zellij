@@ -1,6 +1,6 @@
-import { debug } from '../utils/debug.js'
-import { errorMessage } from '../utils/errors.js'
-import { normalizePaneId } from '../utils/ids.js'
+import { debug } from '../../utils/debug.js'
+import { errorMessage } from '../../utils/errors.js'
+import { normalizePaneId } from './pane.js'
 
 // ---------------------------------------------------------------------------
 // Internal helpers

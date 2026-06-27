@@ -1,10 +1,10 @@
 import type { SessionManager } from '../pty/manager.js'
 import type { SubscriberManager } from './subscribe.js'
 import process from 'node:process'
+import { zellij } from '../lib/zellij/cli.js'
 import { sessionManager } from '../pty/manager.js'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { zellijCli } from './cli.js'
 import { subscriberManager } from './subscribe.js'
 
 let registered = false
@@ -20,7 +20,7 @@ export function cleanupPanesOnShutdown(
 
   for (const session of sessions.list()) {
     try {
-      zellijCli.closePaneSync(session.paneId)
+      zellij.closePaneSync(session.paneId)
     }
     catch (error) {
       // Shutdown cleanup is only a fast best-effort path; the watchdog registry remains as fallback.

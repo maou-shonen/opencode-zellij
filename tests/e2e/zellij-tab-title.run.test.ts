@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { defaultClient, disposeQuietly, loadPlugin, sendEvent } from './support/plugin.js'
+import { currentPaneTabId, renameTabById } from '../../src/lib/zellij/pane.js'
 import { observeStableTabTitle, waitForTabTitleValue } from './support/assertions.js'
 import { withTempProject } from './support/temp-project.js'
-import { currentPaneTabId, renameTabById } from './support/zellij.js'
+import { defaultClient, disposeQuietly, loadPlugin, sendEvent } from './support/plugin.js'
 
 describe('tab title status lifecycle', () => {
   it('switches from idle to running when a scoped session becomes busy', async () => {

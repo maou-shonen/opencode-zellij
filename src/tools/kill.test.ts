@@ -15,7 +15,7 @@ describe('zellij_pty_kill', () => {
     })
 
     const result = await executeZellijPtyKill({ id: session.id }, {
-      zellijCli: {
+      zellij: {
         sendCtrlC: async () => {},
         closePane: async () => {
           throw new Error('close failed')
@@ -42,7 +42,7 @@ describe('zellij_pty_kill', () => {
     })
 
     const result = await executeZellijPtyKill({ id: session.id }, {
-      zellijCli: {
+      zellij: {
         sendCtrlC: async () => {},
         closePane: async () => {
           throw new Error('close failed')

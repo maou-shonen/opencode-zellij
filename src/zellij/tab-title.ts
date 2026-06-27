@@ -1,7 +1,7 @@
 import process from 'node:process'
+import { createZellijClient } from '../lib/zellij/cli.js'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { ZellijCli } from './cli.js'
 
 export interface TabTitleCli {
   renameTab: (title: string) => Promise<void>
@@ -320,7 +320,7 @@ export class TabTitleManager {
   private readonly actor: TabTitleActor
 
   constructor(options: TabTitleManagerOptions) {
-    this.cli = options.cli ?? new ZellijCli()
+    this.cli = options.cli ?? createZellijClient()
     this.emojis = { ...defaultTabTitleEmojis, ...options.emojis }
     this.debounceMs = options.debounceMs ?? 300
     this.retryInitialMs = options.retryInitialMs ?? 250

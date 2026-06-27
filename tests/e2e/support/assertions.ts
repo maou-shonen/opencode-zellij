@@ -1,4 +1,4 @@
-import { currentTabTitle } from './zellij.js'
+import { zellij } from '../../../src/lib/zellij/cli.js'
 
 export async function waitForTabTitle(
   predicate: (title: string | undefined) => boolean,
@@ -9,7 +9,7 @@ export async function waitForTabTitle(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs))
     try {
-      const title = await currentTabTitle()
+      const title = await zellij.currentTabTitle()
       if (predicate(title))
         return true
     }
@@ -29,7 +29,7 @@ export async function waitForTabTitleValue(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs))
     try {
-      const title = await currentTabTitle()
+      const title = await zellij.currentTabTitle()
       if (predicate(title))
         return title
     }
@@ -84,7 +84,7 @@ export async function observeStableTabTitle({
 
     let title: string | undefined
     try {
-      title = await currentTabTitle()
+      title = await zellij.currentTabTitle()
     }
     catch {
       continue

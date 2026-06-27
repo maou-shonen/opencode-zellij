@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import { createServer } from 'node:net'
 
+import { coercePaneId, dumpScreen, listPanes } from '../../src/lib/zellij/pane.js'
+import { zellij } from '../../src/lib/zellij/cli.js'
 import { context, disposeQuietly, getTool, killQuietly, loadPlugin } from './support/plugin.js'
 import { withTempGitProject } from './support/temp-project.js'
-import { runZellij } from './support/zellij.js'
 
 async function waitFor<T>(read: () => T | Promise<T>, predicate: (value: T) => boolean, options: { timeoutMs?: number, intervalMs?: number } = {}): Promise<T> {
   const timeoutMs = options.timeoutMs ?? 8_000
@@ -332,7 +333,7 @@ describe('zellij_pty_read', () => {
         throw new Error('Expected spawned pane session id and pane id')
       const activeSessionID = sessionID
 
-      await runZellij(['action', 'close-pane', '--pane-id', paneId])
+      await zellij.closePane(paneId)
 
       const closedSession = await waitFor(
         async () => listedSession(await listPtySessions(hooks, ctx), activeSessionID),
@@ -566,7 +567,7 @@ describe('zellij_pty_request_sudo', () => {
       // not always reflect the actual visible pane. `dump-screen --full`
       // gives us the current rendered text plus scrollback without that
       // dedup, so we can verify what the user actually sees.
-      const dumpPane = () => runZellij(['action', 'dump-screen', '--pane-id', paneId!, '--full'])
+      const dumpPane = () => dumpScreen(paneId!)
 
       // Wait for the [y/n] prompt to appear in the rendered pane. The
       // script uses \r to overwrite the countdown on a single line, so by
@@ -636,7 +637,7 @@ describe('zellij_pty_request_sudo', () => {
       // `y\n` to drive the approval path; the plugin's `humanInputOnly`
       // guard only blocks writes through the plugin's own `zellij_pty_write`
       // tool, not raw Zellij actions.
-      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'y\n'])
+      await zellij.writeChars(paneId, 'y\n')
 
       const output = await waitFor(
         async () => JSON.parse(
@@ -691,7 +692,7 @@ describe('zellij_pty_request_sudo', () => {
       )
 
       // First, empty Enter — must re-prompt, not cancel.
-      await runZellij(['action', 'write-chars', '--pane-id', paneId, '\n'])
+      await zellij.writeChars(paneId, '\n')
 
       // The script loops back; verify the re-prompt hint is now in the buffer.
       await waitFor(
@@ -706,7 +707,7 @@ describe('zellij_pty_request_sudo', () => {
       )
 
       // Second, gibberish input — also must re-prompt.
-      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'maybe\n'])
+      await zellij.writeChars(paneId, 'maybe\n')
 
       // Grep for `(got: ` specifically so we don't accidentally match the
       // empty-input re-prompt ("Please type y or n explicitly" is also a
@@ -735,7 +736,7 @@ describe('zellij_pty_request_sudo', () => {
       expect(entry?.status).toBe('running')
 
       // Third, a real answer — `n` finally cancels and closes the pane.
-      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'n\n'])
+      await zellij.writeChars(paneId, 'n\n')
 
       const list = await waitFor(
         async () => JSON.parse(
@@ -793,7 +794,7 @@ describe('zellij_pty_request_sudo', () => {
 
       // Send a non-Y answer. With [y/n], anything except Y/y cancels —
       // including `n`, `no`, empty Enter, or stray keys.
-      await runZellij(['action', 'write-chars', '--pane-id', paneId, 'n\n'])
+      await zellij.writeChars(paneId, 'n\n')
 
       // The script exits 130 after printing "Cancelled by user.". Wait for
       // the session to be marked terminal with that exit code. With
@@ -816,8 +817,12 @@ describe('zellij_pty_request_sudo', () => {
       // The pane should also be gone from Zellij's own pane list, because
       // we spawned it with `--close-on-exit`. This is the user-facing
       // behavior: after a cancel, no dead terminal is left behind.
-      const panesAfterCancel = await runZellij(['action', 'list-panes', '--json'])
-      expect(panesAfterCancel).not.toContain(`"pane_id":${paneId}`)
+      const panesAfterCancel = await listPanes()
+      const numericPaneId = Number(String(paneId).replace(/^terminal_/, ''))
+      const paneStillListed = panesAfterCancel.some(
+        p => coercePaneId(p.id) === numericPaneId || coercePaneId(p.pane_id) === numericPaneId,
+      )
+      expect(paneStillListed).toBe(false)
     }
     finally {
       if (sessionID)

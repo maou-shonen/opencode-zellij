@@ -4,8 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import { parsePaneId } from '../../src/utils/ids.js'
-import { runZellij, listPanes } from './support/zellij.js'
+import { normalizePaneId, paneExistsWithRetry, parsePaneId, runZellij } from '../../src/lib/zellij/pane.js'
 
 // ---------------------------------------------------------------------------
 // Single integration-style case that replaces the old scripts-based CI pane
@@ -117,7 +116,11 @@ describe('CI pane orchestration', () => {
         // return an empty / incomplete payload right after a spawn or
         // while the session is settling; one empty poll shouldn't be
         // enough to declare the pane gone.
-        const { alive, rawListPanes } = await paneExistsWithRetry(createdPaneId, config.paneExistsRetries, config.paneExistsRetryIntervalMs)
+        const { alive, rawListPanes } = await paneExistsWithRetry({
+          targetPaneId: createdPaneId,
+          attempts: config.paneExistsRetries,
+          intervalMs: config.paneExistsRetryIntervalMs,
+        })
 
         if (!alive) {
           // Brief grace period in case result was written between checks
@@ -194,69 +197,6 @@ describe('CI pane orchestration', () => {
 // ---------------------------------------------------------------------------
 // File-local helpers (replaces the exported functions from old runner)
 // ---------------------------------------------------------------------------
-
-function normalizePaneId(value: number | string | undefined): string | undefined {
-  if (value === undefined)
-    return undefined
-
-  const normalized = String(value).trim()
-  if (!normalized)
-    return undefined
-
-  if (/^terminal_\d+$/.test(normalized))
-    return normalized
-
-  if (/^\d+$/.test(normalized))
-    return `terminal_${normalized}`
-
-  return normalized
-}
-
-// Probe `zellij action list-panes --json` up to `attempts` times before
-// declaring the pane gone. Returns the raw stdout from the last attempt
-// so the caller can include it in the failure dump and disambiguate
-// "Zellij settled and the pane is really gone" from "RPC returned
-// transient empty payload".
-async function paneExistsWithRetry(
-  targetId: string,
-  attempts = 3,
-  intervalMs = 200,
-): Promise<{ alive: boolean, rawListPanes: string }> {
-  let lastOutput = ''
-  for (let i = 0; i < attempts; i++) {
-    let output = ''
-    try {
-      output = await runZellij(['action', 'list-panes', '--json'])
-    }
-    catch (error) {
-      lastOutput = `<list-panes RPC failed: ${error instanceof Error ? error.message : String(error)}>`
-      if (i < attempts - 1)
-        await new Promise(r => setTimeout(r, intervalMs))
-      continue
-    }
-    lastOutput = output
-
-    let panes: Array<{ id?: unknown, pane_id?: unknown }> = []
-    try {
-      const parsed = JSON.parse(output)
-      panes = Array.isArray(parsed) ? parsed : []
-    }
-    catch {
-      panes = []
-    }
-
-    const alive = panes.some(
-      p =>
-        normalizePaneId(p.id as string | number | undefined) === targetId
-        || normalizePaneId(p.pane_id as string | number | undefined) === targetId,
-    )
-    if (alive)
-      return { alive: true, rawListPanes: output }
-    if (i < attempts - 1)
-      await new Promise(r => setTimeout(r, intervalMs))
-  }
-  return { alive: false, rawListPanes: lastOutput }
-}
 
 // Snapshot of the watchdog registry directory used by the plugin. On a
 // fresh CI runner this should normally be empty; if a previous run left

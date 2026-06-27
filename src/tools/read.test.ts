@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { sessionManager } from '../pty/manager.js'
-import { zellijCli } from '../zellij/cli.js'
+import { zellij } from '../lib/zellij/cli.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { executeZellijPtyRead, zellijPtyReadTool } from './read.js'
 import { type PaneExistsFn } from './pane-cleanup.js'
@@ -65,11 +65,11 @@ describe('zellij_pty_read', () => {
     expect(session.tombstone?.paneClosedAt).toBeNull()
   })
 
-  it('preserves zellijCli.paneExists binding during cleanup verification', async () => {
-    const originalPaneExists = zellijCli.paneExists
+  it('preserves zellij.paneExists binding during cleanup verification', async () => {
+    const originalPaneExists = zellij.paneExists
     const paneExistsCalls: string[] = []
-    ;(zellijCli as any).paneExistsCalls = paneExistsCalls
-    zellijCli.paneExists = async function (this: { paneExistsCalls: string[] }, paneId: string): Promise<boolean> {
+    ;(zellij as any).paneExistsCalls = paneExistsCalls
+    zellij.paneExists = async function (this: { paneExistsCalls: string[] }, paneId: string): Promise<boolean | undefined> {
       this.paneExistsCalls.push(paneId)
       return false
     }
@@ -93,8 +93,8 @@ describe('zellij_pty_read', () => {
       expect(session.tombstone?.paneClosedAt).toBe('2026-01-01T00:00:10.000Z')
     }
     finally {
-      zellijCli.paneExists = originalPaneExists
-      delete (zellijCli as any).paneExistsCalls
+      zellij.paneExists = originalPaneExists
+      delete (zellij as any).paneExistsCalls
     }
   })
 

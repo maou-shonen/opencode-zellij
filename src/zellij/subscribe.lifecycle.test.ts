@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { SessionManager } from '../pty/manager.js'
-import { zellijCli } from './cli.js'
+import { zellij } from '../lib/zellij/cli.js'
 import { SubscriberManager } from './subscribe.js'
 
 class FakeStream extends EventEmitter {
@@ -192,11 +192,11 @@ describe('SubscriberManager lifecycle handling', () => {
     expect(notifications).toEqual([])
   })
 
-  it('preserves zellijCli.closePane binding during session cleanup', async () => {
-    const originalClosePane = zellijCli.closePane
+  it('preserves zellij.closePane binding during session cleanup', async () => {
+    const originalClosePane = zellij.closePane
     const closeCalls: string[] = []
-    ;(zellijCli as any).closeCalls = closeCalls
-    zellijCli.closePane = async function (this: { closeCalls: string[] }, paneId: string): Promise<void> {
+    ;(zellij as any).closeCalls = closeCalls
+    zellij.closePane = async function (this: { closeCalls: string[] }, paneId: string): Promise<void> {
       this.closeCalls.push(paneId)
     }
 
@@ -221,8 +221,8 @@ describe('SubscriberManager lifecycle handling', () => {
       expect(closeCalls).toEqual(['terminal_8'])
     }
     finally {
-      zellijCli.closePane = originalClosePane
-      delete (zellijCli as any).closeCalls
+      zellij.closePane = originalClosePane
+      delete (zellij as any).closeCalls
     }
   })
 })

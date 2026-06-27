@@ -1,31 +1,16 @@
 import { describe, expect, it } from 'bun:test'
 import process from 'node:process'
-import { buildNewPaneActionArgs, buildRenameTabActionArgs, ZellijCli, zellijActionArgs, zellijCommandArgs } from './cli.js'
+import {
+  buildNewPaneActionArgs,
+  buildRenameTabActionArgs,
+  createZellijClient,
+  type ZellijRunOptions,
+  type ZellijRunner,
+  zellijActionArgs,
+  zellijCommandArgs,
+} from './cli.js'
 
-describe('Zellij CLI helpers', () => {
-  async function withEnv<T>(overrides: Record<string, string | undefined>, run: () => Promise<T>): Promise<T> {
-    const previous = new Map<string, string | undefined>()
-    for (const [key, value] of Object.entries(overrides)) {
-      previous.set(key, process.env[key])
-      if (value === undefined)
-        delete process.env[key]
-      else
-        process.env[key] = value
-    }
-
-    try {
-      return await run()
-    }
-    finally {
-      for (const [key, value] of previous) {
-        if (value === undefined)
-          delete process.env[key]
-        else
-          process.env[key] = value
-      }
-    }
-  }
-
+describe('Zellij CLI arg builders', () => {
   function withZellijEnv<T>(value: string | undefined, run: () => T): T {
     const previous = process.env.ZELLIJ
     try {
@@ -147,31 +132,32 @@ describe('Zellij CLI helpers', () => {
       '🟢 my-project',
     ])
   })
+})
 
-  it('reads the active non-plugin tab title for session-only control', async () => {
-    const calls: string[][] = []
-    const cli = new ZellijCli(async (args) => {
-      calls.push(args)
-      return {
-        stdout: JSON.stringify([
-          { tab_id: 1, name: 'plugin-tab', active: true, is_plugin: true },
-          { tab_id: 2, title: 'active-tab', active: true, is_plugin: false },
-        ]),
-        stderr: '',
-      }
-    })
+describe('createZellijClient', () => {
+  it('passes the runner through to every zellij call', async () => {
+    const calls: Array<{ args: string[], options: ZellijRunOptions | undefined }> = []
+    const runner: ZellijRunner = {
+      run: async (actionArgs, options) => {
+        calls.push({ args: actionArgs, options })
+        return { stdout: '', stderr: '' }
+      },
+    }
 
-    await withEnv({
-      ZELLIJ: undefined,
-      ZELLIJ_PANE_ID: undefined,
-      ZELLIJ_SESSION_NAME: 'demo-session',
-    }, async () => {
-      await expect(cli.currentTabTitle()).resolves.toBe('active-tab')
-    })
+    const client = createZellijClient({ runner })
 
-    expect(calls).toEqual([
-      ['action', 'list-tabs', '--json'],
+    await client.writeChars('terminal_3', 'hello')
+    await client.sendCtrlC('terminal_3')
+    await client.closePane('terminal_3')
+    await client.focusPane('terminal_3')
+    await client.renameTabById(7, 'demo')
+
+    expect(calls.map(c => c.args)).toEqual([
+      ['action', 'write-chars', '--pane-id', 'terminal_3', 'hello'],
+      ['action', 'send-keys', '--pane-id', 'terminal_3', 'Ctrl c'],
+      ['action', 'close-pane', '--pane-id', 'terminal_3'],
+      ['action', 'focus-pane-id', 'terminal_3'],
+      ['action', 'rename-tab', '--tab-id', '7', 'demo'],
     ])
   })
-
-  })
+})

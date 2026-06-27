@@ -1,7 +1,7 @@
 import type { PaneExistsFn } from './pane-cleanup.js'
 import { tool } from '@opencode-ai/plugin'
+import { zellij } from '../lib/zellij/cli.js'
 import { sessionManager } from '../pty/manager.js'
-import { zellijCli } from '../zellij/cli.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, publicSession } from './format.js'
 import { readOutputSnapshot, validateGrep } from './output.js'
@@ -50,7 +50,7 @@ export async function executeZellijPtyRead(args: ReadToolArgs, dependencies: Rea
   const publicSessionApi = dependencies.publicSession ?? publicSession
   const readOutputSnapshotApi = dependencies.readOutputSnapshot ?? readOutputSnapshot
   const validateGrepApi = dependencies.validateGrep ?? validateGrep
-  const paneExistsApi = dependencies.paneExists ?? (paneId => zellijCli.paneExists(paneId))
+  const paneExistsApi = dependencies.paneExists ?? (paneId => zellij.paneExists(paneId))
 
   const session = sessionManagerApi.get(args.id)
   const grepError = validateGrepApi(args.grep)

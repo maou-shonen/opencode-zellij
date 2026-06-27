@@ -214,7 +214,7 @@ Returns:
 - 把 privileged command 交給使用者審核 —— 他們看到 script,用嚴格 `[y/n]` prompt 確認,**沒有預設**:user 必須明確打 `y`(或 `Y`)才會同意,打 `n`(或 `N`)取消。**空 Enter 跟任何亂打都會被退回並 re-prompt**(「Empty input. Please type y or n explicitly.」)— 防止 user 不小心按到 Enter 結果 sudo 莫名被取消。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - 使用者打的 credentials 只留在 Zellij scrollback,不會進到 agent 或 LLM。 [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 - `[y/n]` prompt 之前會跑 3s 倒數,數字用 `\r` overwrite 在同一行遞減(3 → 2 → 1);空 Enter 跟亂打會被退回並 re-prompt,只有明確的 `y`/`Y` 同意、`n`/`N` 取消。倒數跟 prompt 會在 Zellij pane 照順序渲染出來。 [`src/tools/request-sudo.test.ts`](src/tools/request-sudo.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
-- Pane spawn 時帶 `--close-on-exit`,bash 一退出 Zellij 就關 pane —— 不會在使用者批准或取消後留下一個卡住的空 pane。 [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
+- Pane spawn 時帶 `--close-on-exit`,bash 一退出 Zellij 就關 pane —— 不會在使用者批准或取消後留下一個卡住的空 pane。 [`src/lib/zellij/cli.test.ts`](src/lib/zellij/cli.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 ### Dynamic tab title
 在當前 Zellij tab title 末尾追加狀態 emoji，顯示 OpenCode 目前的狀態（idle / running / needs-input）。狀態變化時只取代末尾的 emoji，保留你原本的 tab title。
@@ -237,7 +237,7 @@ Sidecar config 從 `~/.config/opencode/opencode-zellij.config.jsonc`(user)與 `.
 **Spec:** [`src/tools/request-sudo.test.ts`](src/tools/request-sudo.test.ts), [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)
 
 **`pty.sudoPaneFloatingSize`** `{ width?: string, height?: string, pinned?: boolean }`。`sudoPaneMode` 為 `"floating"` 時浮動 pane 的大小。`width` / `height` 接受百分比字串(如 `"80%"`)或 bare integer(以 cells 為單位);`pinned` 讓 pane 永遠在最上層。預設:`{ width: "80%", height: "60%", pinned: true }`。
-**Spec:** [`src/config.test.ts`](src/config.test.ts), [`src/zellij/cli.test.ts`](src/zellij/cli.test.ts)
+**Spec:** [`src/config.test.ts`](src/config.test.ts), [`src/lib/zellij/cli.test.ts`](src/lib/zellij/cli.test.ts)
 
 **`pty.cleanupExitedPaneOnRead`** `boolean`,預設 `true`。為 `true` 時,`zellij_pty_read` 對已退出的 pane 回傳 output 後會關閉該 pane。
 **Spec:** [`tests/e2e/zellij-pane.run.test.ts`](tests/e2e/zellij-pane.run.test.ts)

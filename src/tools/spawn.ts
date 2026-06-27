@@ -1,10 +1,10 @@
 import type { Probe } from '../pty/probe.js'
 import { tool } from '@opencode-ai/plugin'
+import { zellij } from '../lib/zellij/cli.js'
 import { sessionManager } from '../pty/manager.js'
 import { runProbe } from '../pty/probe.js'
 import { createExitCodeToken } from '../utils/exit-code.js'
 import { createOpenCodePaneTitle } from '../utils/pane-title.js'
-import { zellijCli } from '../zellij/cli.js'
 import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { completedPanesFromSessions, jsonResponse, publicSession } from './format.js'
@@ -49,7 +49,7 @@ export const zellijPtySpawnTool = tool({
       throw new Error(`Invalid probe.grep regex: ${grepError}`)
     const title = createOpenCodePaneTitle(args.title ?? args.command)
 
-    const paneId = await zellijCli.newPane({
+    const paneId = await zellij.newPane({
       command: args.command,
       args: args.args,
       cwd,

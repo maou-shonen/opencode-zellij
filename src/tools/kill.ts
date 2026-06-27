@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { tool } from '@opencode-ai/plugin'
+import { zellij } from '../lib/zellij/cli.js'
 import { sessionManager } from '../pty/manager.js'
-import { zellijCli } from '../zellij/cli.js'
 import { unregisterPaneFromWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, publicSession } from './format.js'
@@ -11,7 +11,7 @@ import { closePaneOrVerifyGone } from './pane-cleanup.js'
 const schema = tool.schema
 
 export interface KillToolDependencies {
-  zellijCli?: Pick<typeof zellijCli, 'sendCtrlC' | 'closePane' | 'paneExists'> | undefined
+  zellij?: Pick<typeof zellij, 'sendCtrlC' | 'closePane' | 'paneExists'> | undefined
 }
 
 export interface KillToolResult {
@@ -25,13 +25,13 @@ export interface KillToolResult {
 }
 
 export async function executeZellijPtyKill(args: { id: string }, dependencies: KillToolDependencies = {}): Promise<KillToolResult> {
-  const zellijCliApi = dependencies.zellijCli ?? zellijCli
+  const zellijApi = dependencies.zellij ?? zellij
   const session = sessionManager.get(args.id)
   const warnings: string[] = []
   const output = subscriberManager.has(session.id) ? readOutputSnapshot(session.id) : undefined
 
   try {
-    await zellijCliApi.sendCtrlC(session.paneId)
+    await zellijApi.sendCtrlC(session.paneId)
     await delay(500)
   }
   catch (error) {
@@ -40,8 +40,8 @@ export async function executeZellijPtyKill(args: { id: string }, dependencies: K
 
   const closeResult = await closePaneOrVerifyGone({
     paneId: session.paneId,
-    closePane: () => zellijCliApi.closePane(session.paneId),
-    paneExists: zellijCliApi.paneExists,
+    closePane: () => zellijApi.closePane(session.paneId),
+    paneExists: zellijApi.paneExists,
   })
 
   if (!closeResult.cleanupReady) {

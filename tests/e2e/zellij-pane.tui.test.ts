@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import process from 'node:process'
-import { verifySpawnedTerminalPaneIdentity } from './support/spawned-pane.js'
-import { currentPaneTabId, listPanes, runZellij, zellijID } from './support/zellij.js'
+import { zellij } from '../../src/lib/zellij/cli.js'
+import { coercePaneId, currentPaneTabId, listPanes, runZellij, verifySpawnedTerminalPaneIdentity } from '../../src/lib/zellij/pane.js'
 
 // Pane-required TUI gating: the test body requires ZELLIJ, ZELLIJ_PANE_ID,
 // AND ZELLIJ_SESSION_NAME (to target the right session for CLI actions).
@@ -22,7 +22,7 @@ if (hasPaneContext) {
       const panesBefore = await listPanes()
       const paneIdsBeforeSpawn = new Set(
         panesBefore.flatMap((pane) => {
-          const paneId = zellijID(pane.id) ?? zellijID(pane.pane_id)
+          const paneId = coercePaneId(pane.id) ?? coercePaneId(pane.pane_id)
           return paneId === undefined ? [] : [paneId]
         }),
       )
@@ -58,14 +58,14 @@ if (hasPaneContext) {
         await new Promise(resolve => setTimeout(resolve, 1000))
 
         const panesAfter = await listPanes()
-        const spawnedPaneInfo = panesAfter.find(p => zellijID(p.id) === spawnedPaneId || zellijID(p.pane_id) === spawnedPaneId)
+        const spawnedPaneInfo = panesAfter.find(p => coercePaneId(p.id) === spawnedPaneId || coercePaneId(p.pane_id) === spawnedPaneId)
         expect(spawnedPaneInfo).toBeDefined()
         if (!spawnedPaneInfo)
           throw new Error(`Spawned pane ${spawnedPaneIdStr} (numeric ${spawnedPaneId}) not found in pane list`)
 
         // Core pane-context invariant: the spawned pane shares the same tab as
         // the original pane (new-pane opens in the current tab by default).
-        const spawnedTabId = zellijID(spawnedPaneInfo.tab_id)
+        const spawnedTabId = coercePaneId(spawnedPaneInfo.tab_id)
         expect(spawnedTabId).toBe(tabId)
 
         safeCleanupPaneId = spawnedPaneId
@@ -86,7 +86,7 @@ if (hasPaneContext) {
         }
         else {
           try {
-            await runZellij(['action', 'close-pane', '--pane-id', String(safeCleanupPaneId)])
+            await zellij.closePane(String(safeCleanupPaneId))
             await new Promise(resolve => setTimeout(resolve, 800))
           }
           catch {
@@ -108,7 +108,7 @@ if (hasPaneContext) {
         let stillPresent = true
         for (let attempt = 0; attempt < 6; attempt++) {
           const panesFinal = await listPanes()
-          stillPresent = panesFinal.some(p => zellijID(p.id) === spawnedPaneId || zellijID(p.pane_id) === spawnedPaneId)
+          stillPresent = panesFinal.some(p => coercePaneId(p.id) === spawnedPaneId || coercePaneId(p.pane_id) === spawnedPaneId)
           if (!stillPresent)
             break
           if (attempt < 5)

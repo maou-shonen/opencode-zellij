@@ -4,12 +4,12 @@ import type { ReadLinesInput, ReadLinesResult } from '../pty/ring-buffer.js'
 import type { PtySession, SessionTerminalReason } from '../pty/session.js'
 import { spawn } from 'node:child_process'
 import process from 'node:process'
+import { ensureZellijTarget, zellij, zellijCommandArgs } from '../lib/zellij/cli.js'
 import { sessionManager } from '../pty/manager.js'
 import { RingBuffer } from '../pty/ring-buffer.js'
 import { debug } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { parseExitCodeMarkerLines } from '../utils/exit-code.js'
-import { ensureZellijTarget, zellijCli, zellijCommandArgs } from './cli.js'
 import { unregisterPaneFromWatchdog } from './pane-watchdog.js'
 
 interface SubscriberState {
@@ -33,9 +33,9 @@ export interface SubscriberLifecycleHooks {
 
 export interface SubscriberManagerDependencies {
   spawn?: typeof spawn | undefined
-  dumpScreen?: typeof zellijCli.dumpScreen | undefined
-  paneExists?: typeof zellijCli.paneExists | undefined
-  closePane?: typeof zellijCli.closePane | undefined
+  dumpScreen?: typeof zellij.dumpScreen | undefined
+  paneExists?: typeof zellij.paneExists | undefined
+  closePane?: typeof zellij.closePane | undefined
   lifecycleHooks?: SubscriberLifecycleHooks | undefined
   terminalTailLines?: number | undefined
 }
@@ -109,9 +109,9 @@ export class SubscriberManager {
   // Per-session start promises to prevent concurrent spawn races
   private readonly startingSessions = new Map<string, Promise<void>>()
   private readonly spawnProcess: typeof spawn
-  private readonly dumpScreen: typeof zellijCli.dumpScreen
-  private readonly paneExists: typeof zellijCli.paneExists
-  private readonly closePane: typeof zellijCli.closePane
+  private readonly dumpScreen: typeof zellij.dumpScreen
+  private readonly paneExists: typeof zellij.paneExists
+  private readonly closePane: typeof zellij.closePane
   private lifecycleHooks: SubscriberLifecycleHooks | undefined
   private readonly terminalTailLines: number
 
@@ -121,9 +121,9 @@ export class SubscriberManager {
     dependencies: SubscriberManagerDependencies = {},
   ) {
     this.spawnProcess = dependencies.spawn ?? spawn
-    this.dumpScreen = dependencies.dumpScreen ?? (paneId => zellijCli.dumpScreen(paneId))
-    this.paneExists = dependencies.paneExists ?? (paneId => zellijCli.paneExists(paneId))
-    this.closePane = dependencies.closePane ?? (paneId => zellijCli.closePane(paneId))
+    this.dumpScreen = dependencies.dumpScreen ?? (paneId => zellij.dumpScreen(paneId))
+    this.paneExists = dependencies.paneExists ?? (paneId => zellij.paneExists(paneId))
+    this.closePane = dependencies.closePane ?? (paneId => zellij.closePane(paneId))
     this.lifecycleHooks = dependencies.lifecycleHooks
     this.terminalTailLines = dependencies.terminalTailLines ?? 200
   }

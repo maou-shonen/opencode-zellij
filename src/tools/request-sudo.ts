@@ -1,9 +1,9 @@
 import { tool } from '@opencode-ai/plugin'
+import { zellij } from '../lib/zellij/cli.js'
 import { assertSudoPaneAllowed } from '../permissions/sudo-pane.js'
 import { sessionManager } from '../pty/manager.js'
 import { createExitCodeToken } from '../utils/exit-code.js'
 import { createOpenCodePaneTitle } from '../utils/pane-title.js'
-import { zellijCli } from '../zellij/cli.js'
 import { registerPaneForWatchdog } from '../zellij/pane-watchdog.js'
 import { subscriberManager } from '../zellij/subscribe.js'
 import { jsonResponse, publicSession } from './format.js'
@@ -111,7 +111,7 @@ export function createRequestSudoTool(options: RequestSudoToolOptions = DEFAULT_
 
       const command = buildReviewScript(args.summary, args.scripts)
       const title = createOpenCodePaneTitle(buildPaneTitle(args.summary))
-      const paneId = await zellijCli.newPane({
+      const paneId = await zellij.newPane({
         command: 'bash',
         args: ['-lc', command],
         cwd,

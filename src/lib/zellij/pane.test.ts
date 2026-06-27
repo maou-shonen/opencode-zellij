@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { createSessionId, normalizePaneId, parsePaneId } from './ids.js'
+import {
+  normalizePaneId,
+  parsePaneId,
+  verifySpawnedTerminalPaneIdentity,
+} from './pane.js'
 
 describe('pane id helpers', () => {
   it('normalizes numeric pane ids', () => {
@@ -50,8 +54,40 @@ describe('pane id helpers', () => {
     expect(() => parsePaneId('plugin_42')).toThrow(/Unable to parse/)
     expect(() => parsePaneId('plugin_1\n')).toThrow(/Unable to parse/)
   })
+})
 
-  it('creates short zellij pty session ids', () => {
-    expect(createSessionId()).toMatch(/^zpty_[a-f0-9]{10}$/)
+describe('verifySpawnedTerminalPaneIdentity', () => {
+  it('accepts a new terminal pane id', () => {
+    expect(verifySpawnedTerminalPaneIdentity({
+      spawnOutput: 'terminal_42\n',
+      currentPaneId: '1',
+      paneIdsBeforeSpawn: new Set([1, 2, 3]),
+    })).toEqual({
+      normalizedPaneId: 'terminal_42',
+      numericPaneId: 42,
+    })
+  })
+
+  it('rejects output that resolves to the current pane id', () => {
+    expect(() => verifySpawnedTerminalPaneIdentity({
+      spawnOutput: '1\n',
+      currentPaneId: 'terminal_1',
+      paneIdsBeforeSpawn: new Set([2, 3]),
+    })).toThrow(/Parsed pane id matches the current\/outer pane id/)
+  })
+
+  it('rejects output that resolves to a pane that already existed', () => {
+    expect(() => verifySpawnedTerminalPaneIdentity({
+      spawnOutput: 'terminal_7\n',
+      currentPaneId: '1',
+      paneIdsBeforeSpawn: new Set([2, 7]),
+    })).toThrow(/already existed before spawn/)
+  })
+
+  it('surfaces raw output when parsing fails', () => {
+    expect(() => verifySpawnedTerminalPaneIdentity({
+      spawnOutput: 'plugin_9\n',
+      currentPaneId: '1',
+    })).toThrow(/raw new-pane output: "plugin_9\\n"/)
   })
 })

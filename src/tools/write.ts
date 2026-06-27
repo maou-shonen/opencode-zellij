@@ -1,9 +1,9 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { tool } from '@opencode-ai/plugin'
+import { zellij } from '../lib/zellij/cli.js'
 import { sessionManager } from '../pty/manager.js'
 import { assertWriteSizeAllowed, chunkWriteData } from '../pty/write-data.js'
 import { errorMessage } from '../utils/errors.js'
-import { zellijCli } from '../zellij/cli.js'
 import { jsonResponse, publicSession } from './format.js'
 import { emptyOutputSnapshot, readOutputSnapshot } from './output.js'
 
@@ -31,12 +31,12 @@ export const zellijPtyWriteTool = tool({
     }
 
     if (args.data === '\u0003' || args.data === '\x03') {
-      await zellijCli.sendCtrlC(session.paneId)
+      await zellij.sendCtrlC(session.paneId)
     }
     else {
       assertWriteSizeAllowed(args.data)
       for (const chunk of chunkWriteData(args.data)) {
-        await zellijCli.writeChars(session.paneId, chunk)
+        await zellij.writeChars(session.paneId, chunk)
       }
     }
 
@@ -44,7 +44,7 @@ export const zellijPtyWriteTool = tool({
     if (args.interruptAfterSeconds) {
       await delay(args.interruptAfterSeconds * 1_000)
       if (sessionManager.find(session.id)?.status === 'running') {
-        await zellijCli.sendCtrlC(session.paneId)
+        await zellij.sendCtrlC(session.paneId)
         await delay(500)
       }
     }
