@@ -28,15 +28,16 @@ function createManager(
   notifications: Array<{ sessionId: string, reason: string }>,
   options: {
     paneExists?: (paneId: string) => Promise<boolean | undefined>
+    spawn?: (...args: any[]) => any
   } = {},
 ): { manager: SubscriberManager, sessions: SessionManager } {
   const sessions = new SessionManager()
   const manager = new SubscriberManager(sessions, 10, {
-    spawn: () => {
+    spawn: options.spawn ?? (() => {
       const child = new FakeChild()
       spawned.push(child)
       return child as any
-    },
+    }),
     dumpScreen: async () => 'boot line',
     paneExists: options.paneExists ?? (async () => true),
     closePane: async () => {},
@@ -224,5 +225,83 @@ describe('SubscriberManager lifecycle handling', () => {
       zellij.closePane = originalClosePane
       delete (zellij as any).closeCalls
     }
+  })
+
+  it('spawns the subscribe child without --scrollback to avoid zellij 0.44.x initial-event stalls', async () => {
+    const spawnCalls: Array<{ command: string, args: readonly string[] | undefined }> = []
+    const sessions = new SessionManager()
+    const manager = new SubscriberManager(sessions, 10, {
+      spawn: ((command: string, args?: readonly string[]) => {
+        spawnCalls.push({ command, args })
+        return new FakeChild() as any
+      }) as (...args: any[]) => any,
+      dumpScreen: async () => 'boot line',
+      paneExists: async () => true,
+    })
+    const session = sessions.create({
+      paneId: 'terminal_9',
+      title: 'no scrollback flag',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+
+    expect(spawnCalls).toHaveLength(1)
+    expect(spawnCalls[0]!.command).toBe('zellij')
+    // Bare `--scrollback` on zellij 0.44.x triggers a burst-then-stall
+    // delivery of the initial scrollback event; the subscriber child stays
+    // alive for the duration and `subscriberManager.start()` blocks with it,
+    // which makes every `zellij_pty_read` / `zellij_pty_spawn` look like a
+    // frozen pane. The plugin already captures the canonical scrollback
+    // via `dump-screen --full` right after, so we don't need it here.
+    expect(spawnCalls[0]!.args ?? []).not.toContain('--scrollback')
+    expect(spawnCalls[0]!.args ?? []).toEqual(expect.arrayContaining([
+      'subscribe',
+      '--pane-id', 'terminal_9',
+      '--format', 'json',
+      '--ansi',
+    ]))
+  })
+
+  it('still buffers viewport-only events when the initial event carries no scrollback', async () => {
+    const spawned: FakeChild[] = []
+    const sessions = new SessionManager()
+    const manager = new SubscriberManager(sessions, 10, {
+      spawn: () => {
+        const child = new FakeChild()
+        spawned.push(child)
+        return child as any
+      },
+      dumpScreen: async () => 'snapshot-line-1\nsnapshot-line-2',
+      paneExists: async () => true,
+    })
+    const session = sessions.create({
+      paneId: 'terminal_10',
+      title: 'viewport only initial',
+      command: 'bash',
+      cwd: '/tmp/project',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+
+    await manager.start(session)
+    expect(spawned[0]).toBeDefined()
+    // Simulate the initial event shape we now actually receive from zellij
+    // without `--scrollback`: `scrollback` is null/absent, only `viewport`.
+    spawned[0]!.stdout.emit('data', `${JSON.stringify({
+      event: 'pane_update',
+      is_initial: true,
+      pane_id: 'terminal_10',
+      viewport: ['line-a', 'line-b'],
+    })}\n`)
+
+    const read = manager.read(session.id, { limit: 100 })
+    expect(read.lines).toContain('snapshot-line-1')
+    expect(read.lines).toContain('snapshot-line-2')
+    expect(read.lines).toContain('line-a')
+    expect(read.lines).toContain('line-b')
   })
 })

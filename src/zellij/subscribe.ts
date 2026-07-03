@@ -175,7 +175,23 @@ export class SubscriberManager {
       this.subscribers.set(session.id, state)
     }
 
-    const child = this.spawnProcess('zellij', zellijCommandArgs(['subscribe', '--pane-id', session.paneId, '--scrollback', '--format', 'json', '--ansi']), {
+    // Spawn the subscribe child WITHOUT `--scrollback`.
+    //
+    // Bare `--scrollback` on zellij 0.44.x asks for the full scrollback in
+    // the initial event; observed behaviour for panes with non-trivial
+    // scrollback is a burst-then-stall delivery (~70 KB out, then nothing
+    // for many seconds before the rest arrives). That child stays alive for
+    // the duration, so any caller awaiting `subscriberManager.start()` —
+    // i.e. every `zellij_pty_read` / `zellij_pty_spawn` — blocks with the
+    // pane and the surrounding Zellij session appearing frozen.
+    //
+    // The initial event's `scrollback` field was never read into the
+    // buffer anyway: `extractRenderedLines` prefers `viewport`, and the
+    // canonical scrollback snapshot is captured separately via
+    // `dump-screen --full` a few lines below (which is fast, ~20 ms, even
+    // at 5k+ lines). See 1eb6cb3 for the original "subscribe first, then
+    // dump-screen" ordering this preserves.
+    const child = this.spawnProcess('zellij', zellijCommandArgs(['subscribe', '--pane-id', session.paneId, '--format', 'json', '--ansi']), {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     child.stdin.end()
