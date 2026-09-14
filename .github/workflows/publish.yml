@@ -21,18 +21,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Cache Node dependencies
-        uses: maou-shonen/node-cache-action@v1
+        uses: maou-shonen/node-cache-action@ebf9e2ab607e1571fa03224186111c215a00b009 # v1
 
       - name: Set up mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Set package version from git tag
-        uses: BellCubeDev/update-package-version-by-release-tag@v2
+        uses: BellCubeDev/update-package-version-by-release-tag@1f8aff46e596cd4f81166e8e437e5a117cab20bc # v2
         with:
           version: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
@@ -50,7 +50,7 @@ jobs:
         run: npm publish --registry https://registry.npmjs.org
 
       - name: Checkout default branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.repository.default_branch }}
 
@@ -63,7 +63,7 @@ jobs:
         run: mise run install
 
       - name: Write package version back to default branch
-        uses: BellCubeDev/update-package-version-by-release-tag@v2
+        uses: BellCubeDev/update-package-version-by-release-tag@1f8aff46e596cd4f81166e8e437e5a117cab20bc # v2
         with:
           version: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
@@ -72,7 +72,7 @@ jobs:
           node -e 'const fs = require("node:fs"); const path = "package.json"; const content = fs.readFileSync(path, "utf8"); if (!content.endsWith("\n")) fs.writeFileSync(path, content + "\n")'
 
       - name: Commit package version update
-        uses: stefanzweifel/git-auto-commit-action@v6
+        uses: stefanzweifel/git-auto-commit-action@778341af668090896ca464160c2def5d1d1a3eb0 # v6
         with:
           commit_message: "chore: sync package version to ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           file_pattern: package.json
