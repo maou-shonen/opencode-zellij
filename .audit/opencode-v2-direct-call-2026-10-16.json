@@ -1,0 +1,26 @@
+[
+  {
+    "type": "tool",
+    "id": "call_ac0526c1f1dd40c6a274c8c2",
+    "name": "zellij_pty_list",
+    "executed": false,
+    "state": {
+      "status": "completed",
+      "input": {},
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n  \"sessions\": [],\n  \"completedPaneIds\": [],\n  \"completedPanes\": []\n}"
+        }
+      ],
+      "metadata": {
+        "truncated": false
+      }
+    },
+    "time": {
+      "created": 1792152496094,
+      "ran": 1792152496760,
+      "completed": 1792152496766
+    }
+  }
+]

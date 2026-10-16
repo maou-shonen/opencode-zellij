@@ -166,4 +166,26 @@ describe('completion notification manager', () => {
 
     expect(prompts).toHaveLength(2)
   })
+
+  it('uses the injected prompt and does not call the V1 client', async () => {
+    const prompts: string[] = []
+    const sdk: unknown[] = []
+    const manager = new SessionCompletionNotificationManager({
+      client: makeClient({
+        promptAsync: async (request: unknown) => {
+          sdk.push(request)
+        },
+      }),
+      prompt: async (_sessionID, text) => {
+        prompts.push(text)
+      },
+    })
+    const session = createSession({ paneId: 'terminal_v2' })
+    session.exitCode = 0
+
+    await manager.handleSessionTerminal(createEvent(session))
+
+    expect(sdk).toEqual([])
+    expect(prompts).toEqual([buildCompletionPromptText(createEvent(session))])
+  })
 })

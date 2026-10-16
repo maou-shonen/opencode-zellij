@@ -9,7 +9,18 @@
 
 ## 安裝
 
-把 npm package name 加到 OpenCode config:
+把 npm package name 加到 OpenCode config。
+
+OpenCode 2 讀 `plugins`。
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["opencode-zellij"]
+}
+```
+
+OpenCode 1.18.29 之後讀 `plugin`。
 
 ```json
 {
@@ -19,6 +30,10 @@
 ```
 
 OpenCode 會在啟動時自動安裝 npm plugins。Zellij 也必須已安裝,且可在 `PATH` 中使用。
+
+同一個 package 的 default export 同時有 `setup` 和 `server`。OpenCode 2 呼叫 `setup`。OpenCode 1 呼叫 `server`。
+
+**Spec:** [`src/plugin.test.ts`](src/plugin.test.ts)
 
 ## 功能
 

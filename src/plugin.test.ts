@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import zellijPlugin, { createZellijPtyPlugin } from './plugin.js'
+import zellijPlugin, { createZellijPtyPlugin, setupZellijPtyPlugin } from './plugin.js'
+import { sessionManager } from './pty/manager.js'
 import { SessionCompletionNotificationManager } from './zellij/completion-notifications.js'
 
 describe('ZellijPtyPlugin', () => {
@@ -36,11 +37,12 @@ describe('ZellijPtyPlugin', () => {
     await writeFile(join(configDir, 'opencode-zellij.config.jsonc'), content)
   }
 
-  it('default-exports a V1 PluginModule with id and server', () => {
+  it('default-exports id, V1 server, and V2 setup', () => {
     expect(typeof zellijPlugin).toBe('object')
     expect(zellijPlugin).not.toBeNull()
-    expect((zellijPlugin as { id?: unknown }).id).toBe('opencode-zellij')
-    expect(typeof (zellijPlugin as { server?: unknown }).server).toBe('function')
+    expect(zellijPlugin.id).toBe('opencode-zellij')
+    expect(typeof zellijPlugin.server).toBe('function')
+    expect(typeof zellijPlugin.setup).toBe('function')
   })
 
   it('fires the completion prompt the moment a pane exits', async () => {
@@ -232,5 +234,153 @@ describe('ZellijPtyPlugin', () => {
       client: { session: { promptAsync: async () => {} } },
     }), {})
     expect(createNotificationsCalls).toHaveLength(1)
+  })
+})
+
+describe('OpenCode V2 plugin', () => {
+  let tempRoot = ''
+  let originalXdgConfigHome: string | undefined
+
+  beforeEach(async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), 'opencode-zellij-v2-'))
+    originalXdgConfigHome = process.env.XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = join(tempRoot, 'xdg')
+  })
+
+  afterEach(async () => {
+    if (originalXdgConfigHome === undefined)
+      delete process.env.XDG_CONFIG_HOME
+    else
+      process.env.XDG_CONFIG_HOME = originalXdgConfigHome
+    await rm(tempRoot, { force: true, recursive: true })
+  })
+
+  async function writeProjectConfig(content: string): Promise<void> {
+    const project = join(tempRoot, 'project')
+    const configDir = join(project, '.opencode')
+    await mkdir(configDir, { recursive: true })
+    await writeFile(join(configDir, 'opencode-zellij.config.jsonc'), content)
+  }
+
+  function pluginContext(events: unknown[] = []) {
+    const prompts: Array<{ sessionID: string, text: string }> = []
+    const tools: string[] = []
+    return {
+      prompts,
+      tools,
+      ctx: {
+        location: {
+          directory: join(tempRoot, 'project'),
+          project: { directory: join(tempRoot, 'project') },
+        },
+        session: {
+          async prompt(input: { sessionID: string, text: string }) {
+            prompts.push(input)
+          },
+        },
+        tool: {
+          async transform(callback: (editor: { add: (tool: { name: string }) => void }) => void) {
+            callback({
+              add(tool) {
+                tools.push(tool.name)
+              },
+            })
+          },
+        },
+        event: {
+          async *subscribe() {
+            for (const event of events)
+              yield event
+          },
+        },
+      },
+    }
+  }
+
+  it('registers the PTY tools through setup', async () => {
+    await writeProjectConfig('{ "tabTitle": { "enabled": false } }')
+    const { ctx, tools } = pluginContext()
+    const cleanup = await setupZellijPtyPlugin(ctx)
+    cleanup()
+
+    expect(tools.sort()).toEqual([
+      'zellij_pty_kill',
+      'zellij_pty_list',
+      'zellij_pty_read',
+      'zellij_pty_request_sudo',
+      'zellij_pty_spawn',
+      'zellij_pty_write',
+    ])
+  })
+
+  it('omits PTY tools when pty.enabled is false', async () => {
+    await writeProjectConfig('{ "pty": { "enabled": false }, "tabTitle": { "enabled": false } }')
+    const { ctx, tools } = pluginContext()
+    const cleanup = await setupZellijPtyPlugin(ctx)
+    cleanup()
+
+    expect(tools).toEqual([])
+  })
+
+  it('hides the sudo tool when sudoPane is hide', async () => {
+    await writeProjectConfig('{ "pty": { "sudoPane": "hide" }, "tabTitle": { "enabled": false } }')
+    const { ctx, tools } = pluginContext()
+    const cleanup = await setupZellijPtyPlugin(ctx)
+    cleanup()
+
+    expect(tools.includes('zellij_pty_request_sudo')).toBe(false)
+    expect(tools.includes('zellij_pty_spawn')).toBe(true)
+  })
+
+  it('wakes the OpenCode session through session.prompt', async () => {
+    await writeProjectConfig('{ "tabTitle": { "enabled": false } }')
+    const { ctx, prompts } = pluginContext()
+    let prompt: ((sessionID: string, text: string) => Promise<void>) | undefined
+    const cleanup = await setupZellijPtyPlugin(ctx, {
+      createCompletionNotifications: (context) => {
+        prompt = context.prompt
+        return {
+          handleSessionTerminal: async () => {},
+          dispose() {},
+        }
+      },
+    })
+
+    await prompt?.('oc_1', '[zellij_pty] pane terminal_1 exit=0')
+    cleanup()
+
+    expect(prompts).toEqual([{
+      sessionID: 'oc_1',
+      text: '[zellij_pty] pane terminal_1 exit=0',
+    }])
+  })
+
+  it('removes tracked panes when a V2 session.deleted event arrives', async () => {
+    await writeProjectConfig('{ "tabTitle": { "enabled": false } }')
+    const openCodeSessionId = 'oc_deleted'
+    const session = sessionManager.create({
+      openCodeSessionId,
+      paneId: 'terminal_deleted',
+      title: 'gone',
+      command: 'bash',
+      args: [],
+      cwd: '/tmp',
+      allowAgentInput: true,
+      humanInputOnly: false,
+    })
+    let release = () => {}
+    const handled = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { ctx } = pluginContext()
+    ctx.event.subscribe = async function* () {
+      yield { type: 'session.deleted', data: { sessionID: openCodeSessionId } }
+      release()
+    }
+    const cleanup = await setupZellijPtyPlugin(ctx)
+    await handled
+    cleanup()
+
+    expect(sessionManager.find(session.id)).toBeUndefined()
   })
 })

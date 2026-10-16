@@ -26,6 +26,7 @@ export interface CompletionNotificationClient {
 export interface CompletionNotificationContext {
   client: CompletionNotificationClient
   serverUrl?: URL | undefined
+  prompt?: ((sessionID: string, text: string) => Promise<void>) | undefined
 }
 
 export interface CompletionNotificationManager {
@@ -92,14 +93,25 @@ export class SessionCompletionNotificationManager implements CompletionNotificat
       logger?.withMetadata({ session: event.sessionId }).info('skipped: no openCodeSessionId')
       return
     }
+    const request = buildCompletionPromptRequest(event)
+    const sessionID = request.sessionID
+    if (this.context.prompt) {
+      try {
+        logger?.withMetadata({ sessionID }).info('injected prompt attempt')
+        await this.context.prompt(sessionID, buildCompletionPromptText(event))
+        logger?.withMetadata({ sessionID }).info('injected prompt ok')
+      }
+      catch (error) {
+        logger?.withMetadata({ sessionID, error: errorMessage(error) }).warn('injected prompt failed')
+      }
+      return
+    }
 
     // Try the SDK client first. OpenCode 1.16.x may inject a client whose
     // session is a bare object without a working `_client` field, so fall
     // back to a direct HTTP call to the server's prompt_async endpoint.
     const session = this.context.client.session
     const sdkPrompt = session?.promptAsync ?? session?.prompt
-    const request = buildCompletionPromptRequest(event)
-    const sessionID = request.sessionID
 
     if (sdkPrompt) {
       try {

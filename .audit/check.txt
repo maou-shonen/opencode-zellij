@@ -1,0 +1,25 @@
+[check] $ bunx --bun tsc --noEmit
+[check] $ bunx --bun eslint .
+[check] $ bun test src
+bun test v1.4.3 (c6da4a4d3)
+
+ 198 pass
+ 0 fail
+ 439 expect() calls
+Ran 198 tests across 31 files. [2.55s]
+[check] $ bun run scripts/generate-schema.ts && bunx --bun tsdown
+ℹ tsdown v0.21.10 powered by rolldown v1.0.0-rc.17
+ℹ config file: /home/shonen/projects/opencode-zellij/tsdown.config.ts 
+ℹ entry: src/plugin.ts, src/zellij/pane-watchdog-runner.ts
+ℹ target: node20
+ℹ tsconfig: tsconfig.json
+ℹ Build start
+ℹ Cleaning 6 files
+ℹ dist/index.mjs                      92.81 kB │ gzip: 22.68 kB
+ℹ dist/pane-watchdog-runner.mjs        2.48 kB │ gzip:  1.00 kB
+ℹ dist/index.mjs.map                 204.28 kB │ gzip: 48.79 kB
+ℹ dist/pane-watchdog-runner.mjs.map    5.24 kB │ gzip:  1.96 kB
+ℹ dist/index.d.mts                     3.42 kB │ gzip:  1.10 kB
+ℹ dist/pane-watchdog-runner.d.mts      0.01 kB │ gzip:  0.03 kB
+ℹ 6 files, total: 308.24 kB
+✔ Build complete in 799ms

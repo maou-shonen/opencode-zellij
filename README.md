@@ -9,7 +9,18 @@ Run long-lived commands (dev servers, watchers, REPLs) in visible Zellij panes.
 
 ## Installation
 
-Add the npm package name to your OpenCode config:
+Add the npm package name to your OpenCode config.
+
+OpenCode 2 reads `plugins`.
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["opencode-zellij"]
+}
+```
+
+OpenCode 1.18.29 and newer reads `plugin`.
 
 ```json
 {
@@ -19,6 +30,10 @@ Add the npm package name to your OpenCode config:
 ```
 
 OpenCode installs npm plugins automatically at startup. Zellij must also be installed and available on your `PATH`.
+
+The package default export has both `setup` and `server`. OpenCode 2 calls `setup`. OpenCode 1 calls `server`.
+
+**Spec:** [`src/plugin.test.ts`](src/plugin.test.ts)
 
 ## Features
 

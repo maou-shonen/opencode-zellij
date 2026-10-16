@@ -1,0 +1,28 @@
+{
+  "spawn": {
+    "tool": "zellij_pty_spawn",
+    "status": "completed"
+  },
+  "list": {
+    "tool": "zellij_pty_list",
+    "status": "completed",
+    "note": "listed the spawned pane running"
+  },
+  "read": {
+    "tool": "zellij_pty_read",
+    "status": "completed"
+  },
+  "write": {
+    "tool": "zellij_pty_write",
+    "status": "completed"
+  },
+  "kill": {
+    "tool": "zellij_pty_kill",
+    "status": "completed"
+  },
+  "sudo_deny": {
+    "tool": "zellij_pty_request_sudo",
+    "status": "error",
+    "note": "throws sudo pane is disabled"
+  }
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "id": "opencode-zellij",
+    "source": {
+      "type": "local",
+      "path": "/tmp/opencode-zellij-v2.MlDrlH/.opencode/plugins/opencode-zellij/index.ts"
+    },
+    "features": {
+      "server": true
+    },
+    "state": {
+      "status": "active"
+    }
+  },
+  {
+    "id": "opencode-zellij",
+    "source": {
+      "type": "local",
+      "path": "/tmp/opencode-zellij-v2.MlDrlH/.opencode/plugins/zellij.ts"
+    },
+    "features": {},
+    "state": {
+      "status": "failed",
+      "error": "Duplicate plugin ID: opencode-zellij"
+    }
+  }
+]

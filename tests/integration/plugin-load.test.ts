@@ -13,6 +13,12 @@ interface PluginModule {
   default: {
     id: string
     server: (input: Record<string, unknown>, options?: unknown) => Promise<PluginHooks>
+    setup: (ctx: {
+      location: { directory: string, project: { directory: string } }
+      session: { prompt: (input: { sessionID: string, text: string }) => Promise<unknown> }
+      tool: { transform: (callback: (editor: { add: (tool: { name: string }) => void }) => void) => Promise<unknown> }
+      event: { subscribe: () => AsyncIterable<unknown> }
+    }) => Promise<() => void>
   }
 }
 
@@ -118,6 +124,37 @@ describe('loaded plugin surface', () => {
     finally {
       await disposeQuietly(hooks)
     }
+  })
+
+  it('loads the built V2 setup and registers PTY tools', async () => {
+    await writeProjectConfig('{ "tabTitle": { "enabled": false } }')
+    const mod = await import(`${builtPluginPath}?v2=${Date.now()}-${Math.random()}`) as PluginModule
+    const tools: string[] = []
+    const cleanup = await mod.default.setup({
+      location: {
+        directory: projectRoot(),
+        project: { directory: projectRoot() },
+      },
+      session: {
+        async prompt() {},
+      },
+      tool: {
+        async transform(callback) {
+          callback({
+            add(tool) {
+              tools.push(tool.name)
+            },
+          })
+        },
+      },
+      event: {
+        async *subscribe() {},
+      },
+    })
+    cleanup()
+
+    expect(mod.default.id).toBe('opencode-zellij')
+    expect(tools.sort()).toEqual(ptyToolNames)
   })
 
   it('omits built PTY tools when pty.enabled is false', async () => {

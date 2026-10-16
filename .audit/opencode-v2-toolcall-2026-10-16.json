@@ -1,0 +1,34 @@
+[
+  {
+    "type": "tool",
+    "id": "call_607ad25aeb674e19a64e24ea",
+    "name": "execute",
+    "executed": false,
+    "state": {
+      "status": "completed",
+      "input": {
+        "code": "const res = await tools[\"zellij_pty_list\"]({}); return res;"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n  \"sessions\": [],\n  \"completedPaneIds\": [],\n  \"completedPanes\": []\n}"
+        }
+      ],
+      "metadata": {
+        "toolCalls": [
+          {
+            "tool": "zellij_pty_list",
+            "status": "completed"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    "time": {
+      "created": 1792151126509,
+      "ran": 1792151127154,
+      "completed": 1792151127161
+    }
+  }
+]

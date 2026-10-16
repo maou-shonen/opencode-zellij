@@ -1,0 +1,15 @@
+[
+  {
+    "id": "opencode-zellij",
+    "source": {
+      "type": "local",
+      "path": "/tmp/oc-v2-verify.vsxG7x/.opencode/plugins/opencode-zellij/index.ts"
+    },
+    "features": {
+      "server": true
+    },
+    "state": {
+      "status": "active"
+    }
+  }
+]
